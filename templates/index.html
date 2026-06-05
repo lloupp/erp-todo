@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estagios Medicos - Santa Casa / UFCSPA</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Estagios</h1>
+            <p class="subtitle">Santa Casa / UFCSPA</p>
+        </div>
+        <div class="sidebar-body">
+            <div class="filter-group">
+                <label for="filtro-busca">Busca</label>
+                <input type="text" id="filtro-busca" placeholder="Nome, email, cracha...">
+            </div>
+            <div class="filter-group">
+                <label for="filtro-tipo">Tipo de Estagio</label>
+                <select id="filtro-tipo">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filtro-especialidade">Especialidade</label>
+                <select id="filtro-especialidade">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filtro-etapa">Etapa</label>
+                <select id="filtro-etapa">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="filtro-mes">Mes/Ano</label>
+                <select id="filtro-mes">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="sidebar-actions">
+                <button class="btn btn-primary" onclick="openCreateModal()">+ Novo Estagio</button>
+                <button class="btn btn-secondary" onclick="exportCSV()">Exportar CSV</button>
+                <button class="btn btn-ghost" onclick="clearFilters()">Limpar Filtros</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2 id="page-title">Estagios Medicos</h2>
+        </div>
+        <div id="estagios-container" class="estagios-container">
+            <p class="empty-state">Carregando...</p>
+        </div>
+    </main>
+
+    <div class="modal-overlay" id="modal-estagio">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-estagio-title">Novo Estagio</h3>
+                <button class="modal-close" onclick="closeModal('modal-estagio')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="estagio-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="est-tipo">Tipo *</label>
+                        <select id="est-tipo" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-mes-ano">Mes/Ano *</label>
+                        <input type="month" id="est-mes-ano" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-semana">Semana *</label>
+                        <select id="est-semana" required>
+                            <option value="1">Semana 1</option>
+                            <option value="2">Semana 2</option>
+                            <option value="3">Semana 3</option>
+                            <option value="4">Semana 4</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="est-nome">Nome *</label>
+                        <input type="text" id="est-nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-especialidade">Especialidade *</label>
+                        <input type="text" id="est-especialidade" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="est-cracha">Cracha</label>
+                        <input type="text" id="est-cracha">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-valor">Valor (R$)</label>
+                        <input type="number" id="est-valor" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-termino">Termino</label>
+                        <input type="date" id="est-termino">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="est-email">Email</label>
+                        <input type="email" id="est-email">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-telefone">Telefone</label>
+                        <input type="text" id="est-telefone">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="est-documentos">Documentos</label>
+                        <input type="text" id="est-documentos" placeholder="CRM;Termo;Vacina...">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-certificado">Envio Certificado</label>
+                        <input type="date" id="est-certificado">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group full">
+                        <label for="est-observacao">Observacao</label>
+                        <textarea id="est-observacao" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-estagio')">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveEstagio()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-historico">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-historico-title">Historico de Etapas</h3>
+                <button class="modal-close" onclick="closeModal('modal-historico')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="historico-list" class="historico-list"></div>
+                <div class="avancar-section">
+                    <h4>Avancar Etapa</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="avancar-responsavel">Responsavel</label>
+                            <input type="text" id="avancar-responsavel" placeholder="Nome do responsavel">
+                        </div>
+                        <div class="form-group full">
+                            <label for="avancar-obs">Observacao</label>
+                            <input type="text" id="avancar-obs" placeholder="Observacao (opcional)">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-avancar" onclick="avancarEtapa()">Avancar</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-historico')">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-confirm">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h3>Confirmar Exclusao</h3>
+                <button class="modal-close" onclick="closeModal('modal-confirm')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Deseja realmente excluir este estagio? Esta acao nao pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-confirm')">Cancelar</button>
+                <button class="btn btn-danger" id="btn-confirm-delete">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
