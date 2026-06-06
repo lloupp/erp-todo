@@ -42,6 +42,7 @@
                     <option value="&#9;">TSV</option>
                 </select>
                 <button class="btn btn-sm" onclick="exportarCSV()">Exportar</button>
+                <button class="btn btn-sm" onclick="abrirModal('modal-import')">Importar Excel</button>
                 <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo</button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
             </div>
@@ -237,6 +238,31 @@
             <div class="modal-footer">
                 <button class="btn" onclick="fecharModal('modal-delete')">Cancelar</button>
                 <button class="btn btn-danger" id="btn-confirm-delete">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Importar Excel -->
+    <div class="modal-overlay" id="modal-import">
+        <div class="modal" style="max-width:720px;">
+            <div class="modal-header">
+                <h3>Importar Planilha Excel</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-import')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--color-text-secondary);margin-bottom:16px;font-size:13px;">
+                    Selecione a planilha de controle de vagas. Registros ja existentes (mesmo nome + especialidade + mes) serao ignorados automaticamente.
+                </p>
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label>Arquivo .xlsx</label>
+                    <input type="file" id="import-file" accept=".xlsx,.xls" style="margin-top:4px;">
+                </div>
+                <div id="import-preview"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-import')">Cancelar</button>
+                <button class="btn" onclick="analisarXlsx()">Analisar</button>
+                <button class="btn btn-primary" id="btn-import-confirm" style="display:none;" onclick="confirmarImport()">Confirmar Importacao</button>
             </div>
         </div>
     </div>

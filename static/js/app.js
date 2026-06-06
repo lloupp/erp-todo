@@ -147,6 +147,12 @@ async function loadEstagios() {
             : e.status_pagamento === 'Interessado' ? 'background:#6b7280'
             : 'background:#f59e0b';
 
+        const dias = e.dias_na_etapa || 0;
+        const alertaCor = (e.etapa < 7 && dias > 14) ? '#dc2626' : (e.etapa < 7 && dias > 7) ? '#f59e0b' : null;
+        const alertaHtml = alertaCor
+            ? `<span title="${dias} dias nesta etapa" style="color:${alertaCor};font-size:11px;font-weight:600;margin-left:4px;">&#9888; ${dias}d</span>`
+            : '';
+
         tbody.innerHTML += `<tr>
             <td><span class="badge ${tipoBadge}">${e.tipo_nome}</span></td>
             <td><strong>${e.nome}</strong></td>
@@ -159,7 +165,7 @@ async function loadEstagios() {
             <td><span class="badge" style="${statusBadge}">${e.status_pagamento || 'Interessado'}</span></td>
             <td>
                 <div class="progress-bar">${dots}</div>
-                <div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;">${e.etapa} - ${etapaNome}</div>
+                <div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;">${e.etapa} - ${etapaNome}${alertaHtml}</div>
             </td>
             <td style="white-space:nowrap;">
                 <button class="btn-icon" title="Historico" onclick="verHistorico(${e.id},'${e.nome}')">&#9776;</button>
@@ -383,4 +389,99 @@ function bindTelefoneMask() {
         else if (v.length > 2) v = v.replace(/(\d{2})(\d{1,5})/, '($1) $2');
         el.value = v;
     });
+}
+
+/* ── Importar Excel ───────────────────────── */
+async function analisarXlsx() {
+    const file = document.getElementById('import-file').files[0];
+    if (!file) { alert('Selecione um arquivo .xlsx'); return; }
+
+    const form = new FormData();
+    form.append('arquivo', file);
+
+    const preview = document.getElementById('import-preview');
+    const btnConfirm = document.getElementById('btn-import-confirm');
+    preview.innerHTML = '<p style="color:var(--color-text-muted);padding:8px 0;">Analisando...</p>';
+    btnConfirm.style.display = 'none';
+
+    const r = await fetch('/api/importar-excel?confirmar=0', { method: 'POST', body: form });
+    const data = await r.json();
+    if (data.erro) { preview.innerHTML = `<p style="color:#dc2626">${data.erro}</p>`; return; }
+
+    let html = `<div style="margin-bottom:12px;padding:12px;background:var(--color-surface-hover);border-radius:6px;font-size:13px;">
+        <strong>${data.novos}</strong> novos &bull;
+        <strong style="color:var(--color-text-muted)">${data.duplicados}</strong> ja existentes &bull;
+        <strong>${data.total_planilha}</strong> total na planilha
+    </div>`;
+
+    if (data.preview && data.preview.length > 0) {
+        html += `<div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--color-border);border-radius:6px;">
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <thead style="background:var(--color-surface-hover);">
+            <tr>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--color-border);">Nome</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--color-border);">Especialidade</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--color-border);">Mes/Ano</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--color-border);">Sem.</th>
+                <th style="padding:6px 10px;text-align:left;border-bottom:1px solid var(--color-border);">Valor</th>
+            </tr>
+        </thead><tbody>`;
+        data.preview.forEach(rec => {
+            html += `<tr>
+                <td style="padding:5px 10px;border-bottom:1px solid var(--color-border-light);">${rec.nome || '-'}</td>
+                <td style="padding:5px 10px;border-bottom:1px solid var(--color-border-light);">${rec.especialidade || '-'}</td>
+                <td style="padding:5px 10px;border-bottom:1px solid var(--color-border-light);">${rec.mes_ano || '-'}</td>
+                <td style="padding:5px 10px;border-bottom:1px solid var(--color-border-light);">${rec.semana || '-'}</td>
+                <td style="padding:5px 10px;border-bottom:1px solid var(--color-border-light);">${rec.valor ? 'R$ ' + Number(rec.valor).toFixed(2) : '-'}</td>
+            </tr>`;
+        });
+        if (data.novos > 30) {
+            html += `<tr><td colspan="5" style="text-align:center;padding:8px;color:var(--color-text-muted);">... e mais ${data.novos - 30} registros</td></tr>`;
+        }
+        html += '</tbody></table></div>';
+    } else if (data.novos === 0) {
+        html += '<p style="color:var(--color-text-muted);font-size:13px;">Nenhum registro novo encontrado — todos ja existem no sistema.</p>';
+    }
+
+    preview.innerHTML = html;
+    if (data.novos > 0) btnConfirm.style.display = '';
+}
+
+async function confirmarImport() {
+    const file = document.getElementById('import-file').files[0];
+    if (!file) return;
+
+    const form = new FormData();
+    form.append('arquivo', file);
+
+    const btn = document.getElementById('btn-import-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Importando...';
+
+    const r = await fetch('/api/importar-excel?confirmar=1', { method: 'POST', body: form });
+    const data = await r.json();
+
+    btn.disabled = false;
+    btn.textContent = 'Confirmar Importacao';
+
+    if (data.erro) { alert(data.erro); return; }
+
+    fecharModal('modal-import');
+    document.getElementById('import-file').value = '';
+    document.getElementById('import-preview').innerHTML = '';
+    btn.style.display = 'none';
+
+    alert(`Importacao concluida:\n${data.importados} registros importados\n${data.duplicados} ja existentes (ignorados)`);
+
+    loadEstagios();
+    // Recarregar filtros de especialidade e mes
+    const [espR, mesR] = await Promise.all([fetch('/api/especialidades'), fetch('/api/meses')]);
+    const esp = await espR.json();
+    const mes = await mesR.json();
+    const selEsp = document.getElementById('filtro-especialidade');
+    const selMes = document.getElementById('filtro-mes');
+    selEsp.innerHTML = '<option value="">Todas</option>';
+    selMes.innerHTML = '<option value="">Todos</option>';
+    esp.forEach(e => { selEsp.innerHTML += `<option value="${e}">${e}</option>`; });
+    mes.forEach(m => { selMes.innerHTML += `<option value="${m}">${m}</option>`; });
 }

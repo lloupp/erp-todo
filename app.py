@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import os
 import smtplib
@@ -309,7 +310,13 @@ def api_me():
 def api_get_estagios():
     db = get_db()
     query = '''
-        SELECT e.*, t.nome as tipo_nome
+        SELECT e.*, t.nome as tipo_nome,
+            CAST(julianday('now') - julianday(
+                COALESCE(
+                    (SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id = e.id),
+                    e.updated_at, e.created_at
+                )
+            ) AS INTEGER) as dias_na_etapa
         FROM estagios e
         JOIN tipo_estagio t ON e.tipo_id = t.id
         WHERE 1=1
@@ -338,8 +345,8 @@ def api_get_estagios():
 
     busca = request.args.get('busca')
     if busca:
-        query += ' AND (e.nome LIKE ? OR e.email LIKE ? OR e.cracha LIKE ? OR e.cpf LIKE ?)'
-        params.extend([f'%{busca}%', f'%{busca}%', f'%{busca}%', f'%{busca}%'])
+        query += ' AND (e.nome LIKE ? OR e.email LIKE ? OR e.cracha LIKE ? OR e.cpf LIKE ? OR e.especialidade LIKE ? OR e.observacao LIKE ?)'
+        params.extend([f'%{busca}%'] * 6)
 
     status_pag = request.args.get('status_pagamento')
     if status_pag:
@@ -382,6 +389,7 @@ def api_get_estagios():
             'documentos': r['documentos'],
             'envio_certificado': r['envio_certificado'],
             'etapa': r['etapa'],
+            'dias_na_etapa': r['dias_na_etapa'] or 0,
             'created_at': r['created_at'],
             'updated_at': r['updated_at'],
         })
@@ -697,8 +705,8 @@ def api_exportar_csv():
 
     busca = request.args.get('busca')
     if busca:
-        query += ' AND (e.nome LIKE ? OR e.email LIKE ? OR e.cracha LIKE ? OR e.cpf LIKE ?)'
-        params.extend([f'%{busca}%', f'%{busca}%', f'%{busca}%', f'%{busca}%'])
+        query += ' AND (e.nome LIKE ? OR e.email LIKE ? OR e.cracha LIKE ? OR e.cpf LIKE ? OR e.especialidade LIKE ? OR e.observacao LIKE ?)'
+        params.extend([f'%{busca}%'] * 6)
 
     query += ' ORDER BY e.mes_ano DESC, e.semana, e.nome'
 
@@ -754,6 +762,267 @@ def api_notificacoes():
         'mensagem': r['mensagem'], 'email_destino': r['email_destino'],
         'enviado': r['enviado'], 'ts': r['ts']
     } for r in rows])
+
+
+# ── API: Importar Excel ───────────────────────────────────────
+_MESES_PT = {
+    'janeiro': 1, 'fevereiro': 2, 'março': 3, 'marco': 3,
+    'abril': 4, 'maio': 5, 'junho': 6, 'julho': 7,
+    'agosto': 8, 'setembro': 9, 'outubro': 10,
+    'novembro': 11, 'dezembro': 12,
+}
+_ABAS_IGNORAR = {
+    'especialidade x vagas', 'lista de presença', 'lista de presenca',
+    'certificados estágios', 'certificados estagios',
+    'semana feriado', 'crachás', 'crachas', 'lista de interessados',
+    'lista de presença ',
+}
+_COL_IMPORT = {
+    'nome': 'nome', 'nome ': 'nome',
+    'especialidade': 'especialidade', 'especialidade ': 'especialidade',
+    'crachá': 'cracha', 'cracha': 'cracha', 'crachá ': 'cracha',
+    'valor': 'valor', 'valor ': 'valor',
+    'término': 'termino', 'termino': 'termino', 'término ': 'termino',
+    'e-mail': 'email', 'email': 'email', 'e-mail ': 'email',
+    'telefone': 'telefone', 'telefone ': 'telefone',
+    'observação': 'observacao', 'observacao': 'observacao', 'observação ': 'observacao',
+    'envio de certificado': 'envio_certificado', 'envio de certificado ': 'envio_certificado',
+    'etapa certificado': 'envio_certificado', 'etapa certificado ': 'envio_certificado',
+    'documentação': 'documentos', 'documentos': 'documentos',
+    'documentação ': 'documentos', 'documentos ': 'documentos',
+    'documentacao': 'documentos', 'documentação': 'documentos',
+    'modalidade': '_modalidade', 'modalidade ': '_modalidade',
+}
+
+
+def _xclean(v):
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = v.strip()
+        return None if v in ('\xa0', '', '-', 'N/A') else v
+    return v
+
+
+def _xvalor(v):
+    if v is None or v == '\xa0':
+        return None
+    if isinstance(v, (int, float)):
+        return float(v) if v else None
+    if isinstance(v, str):
+        v = re.sub(r'[R$\xa0\s]', '', v).replace('.', '').replace(',', '.')
+        try:
+            return float(v) or None
+        except ValueError:
+            return None
+    return None
+
+
+def _xdate(v):
+    if v is None:
+        return None
+    if hasattr(v, 'strftime'):
+        return v.strftime('%Y-%m-%d')
+    return None
+
+
+def _parse_aba_xlsx(ws, mes_ano_fixo, ano):
+    records = []
+    col_map = {}
+    semana = 1
+    current_mes_ano = mes_ano_fixo
+
+    for row in ws.iter_rows(values_only=True):
+        if not row:
+            continue
+        if all(c is None or (isinstance(c, str) and c.strip() in ('', '\xa0')) for c in row):
+            continue
+
+        col0 = row[0]
+
+        if isinstance(col0, str):
+            col0s = col0.strip()
+            col0l = col0s.lower()
+
+            # Cabeçalho de mês (ex: "Janeiro") — usado na aba 2026
+            if col0l.rstrip() in _MESES_PT:
+                mes_num = _MESES_PT[col0l.rstrip()]
+                current_mes_ano = f'{ano}-{mes_num:02d}'
+                col_map = {}
+                semana = 1
+                continue
+
+            # Linha de cabeçalho de semana: "Semana 1 | Nome | ..."
+            m = re.match(r'semana\s*(\d+)', col0l)
+            if m:
+                semana = int(m.group(1))
+                new_map = {}
+                for j, cell in enumerate(row):
+                    if j == 0 or cell is None:
+                        continue
+                    key = str(cell).strip().lower()
+                    if key in _COL_IMPORT:
+                        new_map[j] = _COL_IMPORT[key]
+                if new_map:
+                    col_map = new_map
+                continue
+            continue
+
+        # Linha de dados: col0 deve ser uma data
+        if not hasattr(col0, 'strftime') or not col_map:
+            continue
+
+        # Extrair nome
+        nome = None
+        for j, field in col_map.items():
+            if field == 'nome' and j < len(row):
+                nome = _xclean(row[j])
+                break
+        if not nome:
+            continue
+
+        rec = {
+            'mes_ano': current_mes_ano,
+            'semana': semana,
+            'nome': nome,
+            'tipo_id': 1,
+        }
+
+        for j, field in col_map.items():
+            if j >= len(row):
+                continue
+            v = row[j]
+            if field == 'nome':
+                pass
+            elif field == 'valor':
+                rec['valor'] = _xvalor(v)
+            elif field == 'termino':
+                rec['termino'] = _xdate(v)
+            elif field == 'envio_certificado':
+                cv = _xclean(v)
+                rec['envio_certificado'] = _xdate(v) if hasattr(v, 'strftime') else None
+            elif field in ('especialidade', 'email', 'telefone', 'observacao', 'documentos'):
+                rec[field] = _xclean(v)
+            elif field == 'cracha':
+                cv = _xclean(v)
+                if cv in (None, '0', '0.0', 'devolvido', 'Devolvido'):
+                    rec['cracha'] = None
+                elif isinstance(cv, str) and cv.replace('.', '').isdigit():
+                    rec['cracha'] = str(int(float(cv)))
+                else:
+                    rec['cracha'] = cv
+            elif field == '_modalidade':
+                cv = (_xclean(v) or '').lower()
+                if 'obrig' in cv:
+                    rec['tipo_id'] = 2
+                elif 'opta' in cv:
+                    rec['tipo_id'] = 3
+
+        if not rec.get('especialidade'):
+            continue
+
+        rec['etapa'] = 1 if rec['tipo_id'] == 1 else 0
+        records.append(rec)
+
+    return records
+
+
+@app.route('/api/importar-excel', methods=['POST'])
+@login_required
+def api_importar_excel():
+    if 'arquivo' not in request.files:
+        return jsonify({'erro': 'Nenhum arquivo enviado'}), 400
+    arquivo = request.files['arquivo']
+    if not arquivo.filename.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'erro': 'Arquivo deve ser .xlsx ou .xls'}), 400
+
+    confirmar = request.args.get('confirmar', '0') == '1'
+
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao ler arquivo: {e}'}), 400
+
+    all_records = []
+    for sheet_name in wb.sheetnames:
+        name_lower = sheet_name.strip().lower()
+        if name_lower in _ABAS_IGNORAR:
+            continue
+
+        if name_lower == '2026':
+            ano, mes_ano_fixo = 2026, None
+        else:
+            parts = re.split(r'[-/]', name_lower)
+            if len(parts) < 2:
+                continue
+            mes_nome = parts[0].strip()
+            if mes_nome not in _MESES_PT:
+                continue
+            ano_str = parts[-1].strip()
+            try:
+                ano = int(ano_str) if len(ano_str) == 4 else 2000 + int(ano_str)
+            except ValueError:
+                continue
+            mes = _MESES_PT[mes_nome]
+            mes_ano_fixo = f'{ano}-{mes:02d}'
+
+        ws = wb[sheet_name]
+        all_records.extend(_parse_aba_xlsx(ws, mes_ano_fixo, ano))
+
+    # Dedup contra registros existentes
+    db = get_db()
+    existing = set()
+    for row in db.execute('SELECT lower(nome), lower(coalesce(especialidade,"")), mes_ano FROM estagios').fetchall():
+        existing.add((row[0], row[1], row[2]))
+
+    novos, duplicados = [], []
+    for rec in all_records:
+        key = (rec['nome'].lower(), (rec.get('especialidade') or '').lower(), rec.get('mes_ano', ''))
+        if key in existing:
+            duplicados.append(rec)
+        else:
+            novos.append(rec)
+            existing.add(key)
+
+    if not confirmar:
+        return jsonify({
+            'total_planilha': len(all_records),
+            'novos': len(novos),
+            'duplicados': len(duplicados),
+            'preview': novos[:30],
+        })
+
+    responsavel = current_user.nome if current_user.is_authenticated else 'Importacao'
+    importados = 0
+    for rec in novos:
+        try:
+            cursor = db.execute('''
+                INSERT INTO estagios (tipo_id, mes_ano, semana, nome, especialidade, cracha,
+                    valor, termino, email, telefone, observacao, documentos,
+                    envio_certificado, etapa)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                rec.get('tipo_id', 1), rec.get('mes_ano'), rec.get('semana', 1),
+                rec['nome'], rec.get('especialidade'), rec.get('cracha'),
+                rec.get('valor'), rec.get('termino'), rec.get('email'),
+                rec.get('telefone'), rec.get('observacao'), rec.get('documentos'),
+                rec.get('envio_certificado'), rec.get('etapa', 1),
+            ))
+            db.execute('''
+                INSERT INTO historico_etapas (estagio_id, etapa, observacao, responsavel)
+                VALUES (?, ?, ?, ?)
+            ''', (cursor.lastrowid, rec.get('etapa', 1), 'Importado via planilha Excel', responsavel))
+            importados += 1
+        except Exception:
+            pass
+    db.commit()
+
+    return jsonify({
+        'total_planilha': len(all_records),
+        'importados': importados,
+        'duplicados': len(duplicados),
+    })
 
 
 # ── Admin: Usuarios ──────────────────────────────────────────
