@@ -5,58 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Usuarios - Estagios Medicos</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .header h1 { margin: 0; font-size: 1.5rem; }
-        .nav-links a { margin-left: 16px; text-decoration: none; color: var(--text-secondary); font-size: 0.9rem; }
-        .nav-links a:hover { color: var(--accent); }
-        .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .card h2 { margin: 0 0 16px 0; font-size: 1.1rem; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-        th { background: var(--bg); font-weight: 600; color: var(--text-secondary); }
-        tr:hover td { background: var(--hover); }
-        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; color: #fff; }
-        .badge-admin { background: #ef4444; }
-        .badge-user { background: #3b82f6; }
-        .btn { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: opacity 0.2s; }
-        .btn:hover { opacity: 0.85; }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-danger { background: #ef4444; color: #fff; }
-        .btn-secondary { background: var(--border); color: var(--text); }
-        .btn-sm { padding: 4px 10px; font-size: 0.78rem; }
-        .actions { display: flex; gap: 6px; }
-        /* Modal */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
-        .modal-overlay.active { display: flex; }
-        .modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; width: 420px; max-width: 95vw; }
-        .modal h3 { margin: 0 0 18px 0; font-size: 1.1rem; }
-        .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; margin-bottom: 4px; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
-        .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.9rem; box-sizing: border-box; }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
-        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-        .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
-        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 0.9rem; z-index: 200; opacity: 0; transition: opacity 0.3s; }
-        .toast.show { opacity: 1; }
-        .toast-success { background: #22c55e; }
-        .toast-error { background: #ef4444; }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Administracao de Usuarios</h1>
-            <div class="nav-links">
-                <a href="/">Estagios</a>
-                <a href="/dashboard">Dashboard</a>
-                <a href="#" onclick="abrirModalNovo()" class="btn btn-primary btn-sm" style="color:#fff;text-decoration:none;">+ Novo Usuario</a>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Estagios</h1>
+            <p class="subtitle">Santa Casa / UFCSPA</p>
+        </div>
+        <div class="sidebar-body">
+            <div class="sidebar-nav">
+                <a href="/" class="nav-link">Estagios</a>
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/usuarios" class="nav-link active">Usuarios</a>
+            </div>
+            <div class="sidebar-user" id="sidebar-user">
+                <strong>Carregando...</strong>
+                <span></span>
+            </div>
+            <div style="margin-top:8px;">
+                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2>Usuarios</h2>
+            <div class="topbar-right">
+                <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo Usuario</button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
             </div>
         </div>
 
-        <div class="card">
-            <h2>Usuarios do Sistema</h2>
+        <div class="table-container">
             <table>
                 <thead>
                     <tr>
@@ -68,61 +52,118 @@
                         <th>Acoes</th>
                     </tr>
                 </thead>
-                <tbody id="tabela-usuarios">
-                </tbody>
+                <tbody id="tabela-usuarios"></tbody>
             </table>
             <div id="empty-state" class="empty-state" style="display:none;">Nenhum usuario cadastrado.</div>
         </div>
-    </div>
+    </main>
 
-    <!-- Modal Novo/Editar -->
+    <!-- Modal: Novo/Editar Usuario -->
     <div class="modal-overlay" id="modal-usuario">
-        <div class="modal">
-            <h3 id="modal-titulo">Novo Usuario</h3>
-            <input type="hidden" id="edit-id" value="">
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="inp-username" placeholder="login do usuario">
+        <div class="modal" style="max-width:420px;">
+            <div class="modal-header">
+                <h3 id="modal-titulo">Novo Usuario</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-usuario')">&times;</button>
             </div>
-            <div class="form-group">
-                <label>Nome Completo</label>
-                <input type="text" id="inp-nome" placeholder="Nome do usuario">
+            <div class="modal-body">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="inp-username" placeholder="login do usuario">
+                </div>
+                <div class="form-group">
+                    <label>Nome Completo</label>
+                    <input type="text" id="inp-nome" placeholder="Nome do usuario">
+                </div>
+                <div class="form-group">
+                    <label>Senha <span id="senha-hint" style="font-weight:normal;color:var(--color-text-secondary)">(deixe vazio para manter a atual)</span></label>
+                    <input type="password" id="inp-senha" placeholder="Senha">
+                </div>
+                <div class="form-group">
+                    <label>Papel</label>
+                    <select id="inp-role">
+                        <option value="user">Usuario</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-group">
-                <label>Senha <span id="senha-hint" style="font-weight:normal;color:var(--text-secondary)">(deixe vazio para manter a atual)</span></label>
-                <input type="password" id="inp-senha" placeholder="Senha">
-            </div>
-            <div class="form-group">
-                <label>Papel</label>
-                <select id="inp-role">
-                    <option value="user">Usuario</option>
-                    <option value="admin">Administrador</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-usuario')">Cancelar</button>
                 <button class="btn btn-primary" onclick="salvarUsuario()">Salvar</button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Confirmar Exclusao -->
+    <!-- Modal: Confirmar Exclusao -->
     <div class="modal-overlay" id="modal-confirmar">
-        <div class="modal">
-            <h3>Confirmar Exclusao</h3>
-            <p id="msg-confirmar">Deseja realmente excluir este usuario?</p>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="fecharConfirmar()">Cancelar</button>
+        <div class="modal" style="max-width:400px;">
+            <div class="modal-header">
+                <h3>Confirmar Exclusao</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-confirmar')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="msg-confirmar">Deseja realmente excluir este usuario?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-confirmar')">Cancelar</button>
                 <button class="btn btn-danger" id="btn-confirmar-excluir">Excluir</button>
             </div>
         </div>
     </div>
 
-    <div class="toast" id="toast"></div>
-
     <script>
         const API = '/api/usuarios';
 
+        // ── Layout helpers ──────────────────────────────────────────────
+        function loadTheme() {
+            document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
+        }
+        function toggleTheme() {
+            const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+            localStorage.setItem('theme', t);
+        }
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+        async function loadUserInfo() {
+            try {
+                const r = await fetch('/api/me');
+                const d = await r.json();
+                const el = document.getElementById('sidebar-user');
+                if (el) el.innerHTML = `<strong>${d.nome}</strong><span>${d.role}</span>`;
+            } catch(e) {}
+        }
+
+        // ── Modais ──────────────────────────────────────────────────────
+        function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+        function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                fecharModal('modal-usuario');
+                fecharModal('modal-confirmar');
+            }
+        });
+
+        // ── Toast ───────────────────────────────────────────────────────
+        function showToast(msg, isErr) {
+            let t = document.getElementById('_toast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = '_toast';
+                t.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:.9rem;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.style.background = isErr ? '#ef4444' : '#22c55e';
+            t.style.opacity = '1';
+            clearTimeout(t._tid);
+            t._tid = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+        }
+
+        function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+        // ── Carregar lista ──────────────────────────────────────────────
         async function carregarUsuarios() {
             const r = await fetch(API);
             const users = await r.json();
@@ -139,20 +180,17 @@
                     <td>${u.id}</td>
                     <td>${esc(u.username)}</td>
                     <td>${esc(u.nome)}</td>
-                    <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
-                    <td>${u.last_login || '—'}</td>
+                    <td><span class="badge ${u.role === 'admin' ? 'badge-obs' : 'badge-obr'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
+                    <td style="font-size:.82rem;color:var(--color-text-secondary)">${u.last_login || '—'}</td>
                     <td>
-                        <div class="actions">
-                            <button class="btn btn-secondary btn-sm" onclick="editarUsuario(${u.id},'${esc(u.username)}','${esc(u.nome)}','${u.role}')">Editar</button>
-                            <button class="btn btn-danger btn-sm" onclick="confirmarExcluir(${u.id},'${esc(u.nome)}')">Excluir</button>
-                        </div>
+                        <button class="btn btn-sm" onclick="editarUsuario(${u.id},'${esc(u.username)}','${esc(u.nome)}','${u.role}')">Editar</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarExcluir(${u.id},'${esc(u.nome)}')" style="margin-left:4px;">Excluir</button>
                     </td>
                 </tr>
             `).join('');
         }
 
-        function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
-
+        // ── Novo / Editar ───────────────────────────────────────────────
         function abrirModalNovo() {
             document.getElementById('modal-titulo').textContent = 'Novo Usuario';
             document.getElementById('edit-id').value = '';
@@ -162,7 +200,7 @@
             document.getElementById('inp-role').value = 'user';
             document.getElementById('senha-hint').style.display = 'none';
             document.getElementById('inp-senha').placeholder = 'Senha';
-            document.getElementById('modal-usuario').classList.add('active');
+            abrirModal('modal-usuario');
         }
 
         function editarUsuario(id, username, nome, role) {
@@ -174,11 +212,7 @@
             document.getElementById('inp-role').value = role;
             document.getElementById('senha-hint').style.display = 'inline';
             document.getElementById('inp-senha').placeholder = 'Nova senha (opcional)';
-            document.getElementById('modal-usuario').classList.add('active');
-        }
-
-        function fecharModal() {
-            document.getElementById('modal-usuario').classList.remove('active');
+            abrirModal('modal-usuario');
         }
 
         async function salvarUsuario() {
@@ -188,73 +222,45 @@
             const senha = document.getElementById('inp-senha').value;
             const role = document.getElementById('inp-role').value;
 
-            if (!username || !nome) {
-                showToast('Preencha username e nome', true);
-                return;
-            }
+            if (!username || !nome) { showToast('Preencha username e nome', true); return; }
+            if (!id && !senha) { showToast('Senha obrigatoria para novo usuario', true); return; }
 
             const body = { username, nome, role };
             if (senha) body.senha = senha;
 
-            // Novo usuario exige senha
-            if (!id && !senha) {
-                showToast('Senha obrigatoria para novo usuario', true);
-                return;
-            }
-
-            let r;
-            if (id) {
-                r = await fetch(API + '/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-            } else {
-                r = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-            }
-
+            const r = await fetch(id ? `${API}/${id}` : API, {
+                method: id ? 'PUT' : 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(body)
+            });
             const data = await r.json();
-            if (!r.ok) {
-                showToast(data.erro || 'Erro ao salvar', true);
-                return;
-            }
+            if (!r.ok) { showToast(data.erro || 'Erro ao salvar', true); return; }
 
-            fecharModal();
+            fecharModal('modal-usuario');
             carregarUsuarios();
             showToast(id ? 'Usuario atualizado!' : 'Usuario criado!');
         }
 
+        // ── Excluir ─────────────────────────────────────────────────────
         let excluirId = null;
         function confirmarExcluir(id, nome) {
             excluirId = id;
             document.getElementById('msg-confirmar').textContent = `Excluir usuario "${nome}"?`;
-            document.getElementById('modal-confirmar').classList.add('active');
-        }
-        function fecharConfirmar() {
-            document.getElementById('modal-confirmar').classList.remove('active');
-            excluirId = null;
+            abrirModal('modal-confirmar');
         }
         document.getElementById('btn-confirmar-excluir').onclick = async () => {
             if (!excluirId) return;
-            const r = await fetch(API + '/' + excluirId, { method: 'DELETE' });
+            const r = await fetch(`${API}/${excluirId}`, { method: 'DELETE' });
             const data = await r.json();
-            if (!r.ok) {
-                showToast(data.erro || 'Erro ao excluir', true);
-            } else {
-                showToast('Usuario excluido!');
-                carregarUsuarios();
-            }
-            fecharConfirmar();
+            if (!r.ok) { showToast(data.erro || 'Erro ao excluir', true); }
+            else { showToast('Usuario excluido!'); carregarUsuarios(); }
+            fecharModal('modal-confirmar');
+            excluirId = null;
         };
 
-        function showToast(msg, isErr) {
-            const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.className = 'toast show ' + (isErr ? 'toast-error' : 'toast-success');
-            setTimeout(() => t.className = 'toast', 3000);
-        }
-
-        // Fechar modais com Escape
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') { fecharModal(); fecharConfirmar(); }
-        });
-
+        // ── Init ────────────────────────────────────────────────────────
+        loadTheme();
+        loadUserInfo();
         carregarUsuarios();
     </script>
 </body>
