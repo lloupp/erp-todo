@@ -95,7 +95,7 @@ function renderDashboard(d) {
     </div>`;
 
     // By etapa
-    const ETAPAS = {0:'Verif. Vaga',1:'Venda',2:'Pagamento',3:'Docs Env.',4:'Docs Val.',5:'Vaga Conf.',6:'Orient.',7:'Concluido'};
+    const ETAPAS = {0:'Verif. Vaga',1:'Venda',2:'Pagamento',3:'Docs Env.',4:'Docs Val.',5:'Vaga Conf.',6:'Orient.',7:'Comprov.',8:'Concluido'};
     const maxEtapa = Math.max(...d.por_etapa.map(x => x.count), 1);
 
     html += `<div class="charts-grid">

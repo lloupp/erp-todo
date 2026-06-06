@@ -26,7 +26,8 @@ ETAPAS_OBS = {
     4: 'Docs validados',
     5: 'Vaga confirmada',
     6: 'Orientacoes enviadas',
-    7: 'Concluido',
+    7: 'Comprovante recebido',
+    8: 'Concluido',
 }
 
 ETAPAS_OBR_OPT = {
@@ -37,7 +38,8 @@ ETAPAS_OBR_OPT = {
     4: 'Docs validados',
     5: 'Vaga confirmada',
     6: 'Orientacoes enviadas',
-    7: 'Concluido',
+    7: 'Comprovante recebido',
+    8: 'Concluido',
 }
 
 MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho',
@@ -51,7 +53,8 @@ ETAPA_COLORS = {
     4: '#06b6d4',
     5: '#10b981',
     6: '#6366f1',
-    7: '#22c55e',
+    7: '#0ea5e9',
+    8: '#22c55e',
 }
 
 FORMAS_PAGAMENTO = ['PIX', 'Boleto', 'Cartao', 'Dinheiro', 'Isento', 'Outro']
@@ -523,7 +526,7 @@ def api_avancar_etapa(estagio_id):
 
     etapa_atual = row['etapa']
     tipo_id = row['tipo_id']
-    max_etapa = 7
+    max_etapa = 8
     if tipo_id == 1:
         min_etapa = 1
     else:
@@ -605,8 +608,8 @@ def api_estagio_certificado(estagio_id):
     row = db.execute('SELECT e.*, t.nome as tipo_nome FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id WHERE e.id=?', (estagio_id,)).fetchone()
     if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
-    if not row['comprovante_estagio']:
-        return jsonify({'erro': 'Comprovante de estagio nao recebido'}), 400
+    if row['etapa'] < 7:
+        return jsonify({'erro': 'Comprovante de estagio nao recebido (etapa minima: 7)'}), 400
     now = datetime.now()
     data_ext = f"Porto Alegre, {now.day:02d} de {MESES_PT[now.month - 1]} de {now.year}"
 
@@ -1362,6 +1365,9 @@ if __name__ == '__main__':
             db.execute('ALTER TABLE estagios ADD COLUMN comprovante_estagio INTEGER DEFAULT 0')
         if 'carga_horaria' not in cols:
             db.execute('ALTER TABLE estagios ADD COLUMN carga_horaria INTEGER')
+        # Migrar etapa 7 (antigo Concluido) para etapa 8 (novo Concluido)
+        # pois etapa 7 agora é Comprovante recebido
+        db.execute('UPDATE estagios SET etapa=8 WHERE etapa=7')
         # Make cracha non-unique (allow duplicates for empty/0 values)
         try:
            db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')

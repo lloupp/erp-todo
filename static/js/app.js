@@ -1,7 +1,7 @@
 /* ── Config ────────────────────────────────── */
-const ETAPAS_OBS = {1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Concluido'};
-const ETAPAS_OBR = {0:'Verificacao de vaga',1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Concluido'};
-const ETAPA_COLORS = {0:'#6b7280',1:'#f59e0b',2:'#3b82f6',3:'#8b5cf6',4:'#06b6d4',5:'#10b981',6:'#6366f1',7:'#22c55e'};
+const ETAPAS_OBS = {1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Comprovante recebido',8:'Concluido'};
+const ETAPAS_OBR = {0:'Verificacao de vaga',1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Comprovante recebido',8:'Concluido'};
+const ETAPA_COLORS = {0:'#6b7280',1:'#f59e0b',2:'#3b82f6',3:'#8b5cf6',4:'#06b6d4',5:'#10b981',6:'#6366f1',7:'#0ea5e9',8:'#22c55e'};
 const PER_PAGE = 15;
 
 let currentPage = 1;
@@ -208,7 +208,7 @@ async function loadEstagios() {
         const minE = e.tipo_id === 1 ? 1 : 0;
         const etapaNome = etapas[e.etapa] || '';
         const etapaColor = ETAPA_COLORS[e.etapa] || '#6b7280';
-        const dots = Array.from({length: 8 - minE}, (_, i) => {
+        const dots = Array.from({length: 9 - minE}, (_, i) => {
             const step = minE + i;
             let cls = '';
             if (step < e.etapa) cls = 'filled';
@@ -227,19 +227,19 @@ async function loadEstagios() {
             ? `<span title="${dias} dias nesta etapa" style="color:${alertaCor};font-size:11px;font-weight:600;margin-left:4px;">&#9888; ${dias}d</span>`
             : '';
 
-        const comprovIcon = e.comprovante_estagio
-            ? ` <span title="Comprovante recebido" style="color:#22c55e;font-size:11px;">&#10004;</span>`
+        const comprovIcon = e.etapa >= 7
+            ? ` <span title="Comprovante recebido" style="color:#0ea5e9;font-size:11px;">&#10004;</span>`
             : '';
 
         const btnPago = (e.status_pagamento !== 'Pago' && e.status_pagamento !== 'Isento')
             ? `<button class="btn-icon" title="Marcar como Pago" onclick="marcarPago(${e.id})" style="color:#22c55e;">&#128176;</button>`
             : '';
 
-        const certStyle = e.comprovante_estagio
+        const certStyle = e.etapa >= 7
             ? 'color:#6366f1'
             : 'color:var(--color-text-muted);cursor:not-allowed;opacity:.4;';
-        const certAttr = e.comprovante_estagio ? '' : 'disabled';
-        const certTitle = e.comprovante_estagio ? 'Emitir Certificado' : 'Aguardando comprovante de estagio';
+        const certAttr = e.etapa >= 7 ? '' : 'disabled';
+        const certTitle = e.etapa >= 7 ? 'Emitir Certificado' : 'Aguardando comprovante de estagio (etapa 7)';
         const btnCert = `<button class="btn-icon" ${certAttr} title="${certTitle}" onclick="emitirCertificado(${e.id})" style="${certStyle}">&#127884;</button>`;
 
         tbody.innerHTML += `<tr>
@@ -355,7 +355,6 @@ async function editarEstagio(id) {
     document.getElementById('form-documentos').value = e.documentos || '';
     document.getElementById('form-certificado').value = e.envio_certificado || '';
     document.getElementById('form-carga-horaria').value = e.carga_horaria || '';
-    document.getElementById('form-comprovante-estagio').checked = !!e.comprovante_estagio;
     document.getElementById('form-observacao').value = e.observacao || '';
     abrirModal('modal-form');
 }
@@ -381,7 +380,6 @@ async function salvarEstagio() {
         documentos: document.getElementById('form-documentos').value,
         envio_certificado: document.getElementById('form-certificado').value,
         carga_horaria: parseInt(document.getElementById('form-carga-horaria').value) || null,
-        comprovante_estagio: document.getElementById('form-comprovante-estagio').checked ? 1 : 0,
         observacao: document.getElementById('form-observacao').value,
     };
 
