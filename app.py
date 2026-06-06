@@ -838,14 +838,16 @@ def api_exportar_csv():
             r['observacao'], r['envio_certificado'], f"{r['etapa']} - {etapa_nome}"
         ]))
 
-    csv_content = '\n'.join(lines)
+    csv_content = '\r\n'.join(lines)
     ext = 'tsv' if sep == '\t' else 'csv'
     mime = 'text/tab-separated-values' if sep == '\t' else 'text/csv'
-    return Response(
-        csv_content,
+    resp = Response(
+        '﻿' + csv_content,
         mimetype=mime,
         headers={'Content-Disposition': f'attachment; filename=estagios.{ext}'}
     )
+    resp.headers['Content-Type'] = f'{mime}; charset=utf-8'
+    return resp
 
 
 # ── API: Relatórios ──────────────────────────────────────────
@@ -941,11 +943,13 @@ def api_relatorios_exportar():
         lines.append(sep.join(str(v) if v is not None else '' for v in row_cols(r)))
     csv_content = '\r\n'.join(lines)
     nome_arquivo = f'relatorio_{relatorio}.csv'
-    return Response(
+    resp = Response(
         '﻿' + csv_content,
-        mimetype='text/csv; charset=utf-8',
+        mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={nome_arquivo}'}
     )
+    resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    return resp
 
 
 # ── API: Notificacoes ─────────────────────────────────────────
