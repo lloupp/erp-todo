@@ -539,7 +539,8 @@ def api_avancar_etapa(estagio_id):
     data = request.get_json() or {}
     responsavel = data.get('responsavel') or (current_user.nome if current_user.is_authenticated else 'Sistema')
 
-    db.execute('UPDATE estagios SET etapa=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', (nova_etapa, estagio_id))
+    extra = ", status_pagamento='Pago'" if nova_etapa == 2 else ""
+    db.execute(f'UPDATE estagios SET etapa=?{extra}, updated_at=CURRENT_TIMESTAMP WHERE id=?', (nova_etapa, estagio_id))
     db.execute('''
         INSERT INTO historico_etapas (estagio_id, etapa, observacao, responsavel)
         VALUES (?, ?, ?, ?)
