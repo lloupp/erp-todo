@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatorios - Estagios Medicos</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .rel-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .rel-card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .rel-card-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        .rel-card-desc {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            margin-top: 2px;
+        }
+        .rel-card-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .rel-filters {
+            padding: 14px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: flex-end;
+            border-bottom: 1px solid var(--color-border);
+            background: var(--color-bg);
+        }
+        .rel-filters .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .rel-filters label {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+        }
+        .rel-filters input, .rel-filters select {
+            font-size: 13px;
+            padding: 5px 8px;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            background: var(--color-surface);
+            color: var(--color-text);
+        }
+        .rel-preview {
+            padding: 0 20px 16px;
+            overflow-x: auto;
+        }
+        .rel-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        .rel-preview th {
+            text-align: left;
+            padding: 7px 10px;
+            border-bottom: 2px solid var(--color-border);
+            color: var(--color-text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .rel-preview td {
+            padding: 7px 10px;
+            border-bottom: 1px solid var(--color-border);
+            color: var(--color-text);
+        }
+        .rel-preview tr:last-child td { border-bottom: none; }
+        .rel-total {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            padding: 8px 20px 0;
+        }
+        .rel-empty {
+            text-align: center;
+            padding: 32px;
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Estagios</h1>
+            <p class="subtitle">Santa Casa / UFCSPA</p>
+        </div>
+        <div class="sidebar-body">
+            <div class="sidebar-nav">
+                <a href="/" class="nav-link">Estagios</a>
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/relatorios" class="nav-link active">Relatorios</a>
+                <a href="/usuarios" class="nav-link" id="nav-usuarios" style="display:none;">Usuarios</a>
+                <a href="/vagas" class="nav-link" id="nav-vagas" style="display:none;">Vagas</a>
+            </div>
+            <div class="sidebar-user" id="sidebar-user">
+                <strong>Carregando...</strong>
+                <span></span>
+            </div>
+            <div style="margin-top:8px;">
+                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2>Relatorios</h2>
+            <div class="topbar-right">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
+            </div>
+        </div>
+
+        <div style="padding:24px;">
+
+            <!-- Card: Egressos por período -->
+            <div class="rel-card">
+                <div class="rel-card-header">
+                    <div>
+                        <div class="rel-card-title">Egressos por período</div>
+                        <div class="rel-card-desc">Estágios concluídos (etapa 8) — para convidar a retornar</div>
+                    </div>
+                    <div class="rel-card-actions">
+                        <button class="btn btn-sm" onclick="visualizar('egressos')">Visualizar</button>
+                        <button class="btn btn-sm btn-primary" onclick="exportar('egressos')">Exportar CSV</button>
+                    </div>
+                </div>
+                <div class="rel-filters">
+                    <div class="filter-group">
+                        <label>Término de</label>
+                        <input type="date" id="egressos-data-inicio">
+                    </div>
+                    <div class="filter-group">
+                        <label>Término até</label>
+                        <input type="date" id="egressos-data-fim">
+                    </div>
+                    <div class="filter-group">
+                        <label>Especialidade</label>
+                        <select id="egressos-especialidade" class="esp-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select id="egressos-tipo" class="tipo-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rel-total" id="total-egressos"></div>
+                <div class="rel-preview" id="preview-egressos"></div>
+            </div>
+
+            <!-- Card: Pagamentos pendentes -->
+            <div class="rel-card">
+                <div class="rel-card-header">
+                    <div>
+                        <div class="rel-card-title">Pagamentos pendentes</div>
+                        <div class="rel-card-desc">Status Pendente ou Interessado com estágio em andamento — para cobrança ou confirmação</div>
+                    </div>
+                    <div class="rel-card-actions">
+                        <button class="btn btn-sm" onclick="visualizar('pendentes')">Visualizar</button>
+                        <button class="btn btn-sm btn-primary" onclick="exportar('pendentes')">Exportar CSV</button>
+                    </div>
+                </div>
+                <div class="rel-filters">
+                    <div class="filter-group">
+                        <label>Especialidade</label>
+                        <select id="pendentes-especialidade" class="esp-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select id="pendentes-tipo" class="tipo-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Etapa</label>
+                        <select id="pendentes-etapa">
+                            <option value="">Todas</option>
+                            <option value="0">0 - Verificacao de vaga</option>
+                            <option value="1">1 - Venda realizada</option>
+                            <option value="2">2 - Pagamento confirmado</option>
+                            <option value="3">3 - Docs enviados</option>
+                            <option value="4">4 - Docs validados</option>
+                            <option value="5">5 - Vaga confirmada</option>
+                            <option value="6">6 - Orientacoes enviadas</option>
+                            <option value="7">7 - Comprovante recebido</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rel-total" id="total-pendentes"></div>
+                <div class="rel-preview" id="preview-pendentes"></div>
+            </div>
+
+            <!-- Card: Em andamento sem avanço -->
+            <div class="rel-card">
+                <div class="rel-card-header">
+                    <div>
+                        <div class="rel-card-title">Em andamento sem avanço</div>
+                        <div class="rel-card-desc">Estágios parados na mesma etapa há mais de N dias — para follow-up</div>
+                    </div>
+                    <div class="rel-card-actions">
+                        <button class="btn btn-sm" onclick="visualizar('parados')">Visualizar</button>
+                        <button class="btn btn-sm btn-primary" onclick="exportar('parados')">Exportar CSV</button>
+                    </div>
+                </div>
+                <div class="rel-filters">
+                    <div class="filter-group">
+                        <label>Dias mínimos na etapa</label>
+                        <input type="number" id="parados-dias-min" value="7" min="1" style="width:80px;">
+                    </div>
+                    <div class="filter-group">
+                        <label>Especialidade</label>
+                        <select id="parados-especialidade" class="esp-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select id="parados-tipo" class="tipo-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rel-total" id="total-parados"></div>
+                <div class="rel-preview" id="preview-parados"></div>
+            </div>
+
+            <!-- Card: Lista por especialidade -->
+            <div class="rel-card">
+                <div class="rel-card-header">
+                    <div>
+                        <div class="rel-card-title">Lista por especialidade</div>
+                        <div class="rel-card-desc">Todos os contatos agrupados por especialidade — para campanhas segmentadas</div>
+                    </div>
+                    <div class="rel-card-actions">
+                        <button class="btn btn-sm" onclick="visualizar('especialidade')">Visualizar</button>
+                        <button class="btn btn-sm btn-primary" onclick="exportar('especialidade')">Exportar CSV</button>
+                    </div>
+                </div>
+                <div class="rel-filters">
+                    <div class="filter-group">
+                        <label>Especialidade</label>
+                        <select id="especialidade-especialidade" class="esp-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select id="especialidade-tipo" class="tipo-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Mes/Ano</label>
+                        <select id="especialidade-mes" class="mes-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rel-total" id="total-especialidade"></div>
+                <div class="rel-preview" id="preview-especialidade"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        loadTheme();
+        loadUserInfo();
+        await carregarFiltros();
+    });
+
+    async function carregarFiltros() {
+        const [espR, mesR, tipoR] = await Promise.all([
+            fetch('/api/especialidades'),
+            fetch('/api/meses'),
+            fetch('/api/tipos'),
+        ]);
+        const especialidades = await espR.json();
+        const meses = await mesR.json();
+        const tipos = await tipoR.json();
+
+        document.querySelectorAll('.esp-select').forEach(sel => {
+            especialidades.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.especialidade;
+                opt.textContent = e.especialidade;
+                sel.appendChild(opt);
+            });
+        });
+
+        document.querySelectorAll('.mes-select').forEach(sel => {
+            meses.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.mes_ano;
+                opt.textContent = m.mes_ano;
+                sel.appendChild(opt);
+            });
+        });
+
+        document.querySelectorAll('.tipo-select').forEach(sel => {
+            tipos.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.nome;
+                sel.appendChild(opt);
+            });
+        });
+    }
+
+    function coletarFiltros(tipo) {
+        const p = new URLSearchParams({ relatorio: tipo });
+        const g = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        };
+        if (tipo === 'egressos') {
+            if (g('egressos-data-inicio')) p.set('data_inicio', g('egressos-data-inicio'));
+            if (g('egressos-data-fim')) p.set('data_fim', g('egressos-data-fim'));
+            if (g('egressos-especialidade')) p.set('especialidade', g('egressos-especialidade'));
+            if (g('egressos-tipo')) p.set('tipo_id', g('egressos-tipo'));
+        } else if (tipo === 'pendentes') {
+            if (g('pendentes-especialidade')) p.set('especialidade', g('pendentes-especialidade'));
+            if (g('pendentes-tipo')) p.set('tipo_id', g('pendentes-tipo'));
+            if (g('pendentes-etapa') !== '') p.set('etapa', g('pendentes-etapa'));
+        } else if (tipo === 'parados') {
+            p.set('dias_min', g('parados-dias-min') || '7');
+            if (g('parados-especialidade')) p.set('especialidade', g('parados-especialidade'));
+            if (g('parados-tipo')) p.set('tipo_id', g('parados-tipo'));
+        } else {
+            if (g('especialidade-especialidade')) p.set('especialidade', g('especialidade-especialidade'));
+            if (g('especialidade-tipo')) p.set('tipo_id', g('especialidade-tipo'));
+            if (g('especialidade-mes')) p.set('mes_ano', g('especialidade-mes'));
+        }
+        return p;
+    }
+
+    async function visualizar(tipo) {
+        const params = coletarFiltros(tipo);
+        params.set('preview', '1');
+        const totalEl = document.getElementById('total-' + tipo);
+        const previewEl = document.getElementById('preview-' + tipo);
+        totalEl.textContent = 'Carregando...';
+        previewEl.innerHTML = '';
+        try {
+            const r = await fetch('/api/relatorios/exportar?' + params);
+            const d = await r.json();
+            if (!d.data || d.data.length === 0) {
+                totalEl.textContent = '';
+                previewEl.innerHTML = '<div class="rel-empty">Nenhum registro encontrado.</div>';
+                return;
+            }
+            const mostrando = d.data.length < d.total ? ` (mostrando ${d.data.length} de ${d.total})` : '';
+            totalEl.textContent = `${d.total} registro${d.total !== 1 ? 's' : ''}${mostrando}`;
+            const heads = d.headers.map(h => `<th>${h}</th>`).join('');
+            const rows = d.data.map(row =>
+                '<tr>' + d.headers.map(h => `<td>${row[h] || ''}</td>`).join('') + '</tr>'
+            ).join('');
+            previewEl.innerHTML = `<table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>`;
+        } catch(e) {
+            totalEl.textContent = '';
+            previewEl.innerHTML = '<div class="rel-empty">Erro ao carregar dados.</div>';
+        }
+    }
+
+    function exportar(tipo) {
+        const params = coletarFiltros(tipo);
+        window.open('/api/relatorios/exportar?' + params);
+    }
+    </script>
+</body>
+</html>

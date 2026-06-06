@@ -310,6 +310,12 @@ def dashboard_page():
     return render_template('dashboard.html')
 
 
+@app.route('/relatorios')
+@login_required
+def relatorios_page():
+    return render_template('relatorios.html')
+
+
 # ── API: Auth ─────────────────────────────────────────────────
 @app.route('/api/me')
 @login_required
@@ -839,6 +845,106 @@ def api_exportar_csv():
         csv_content,
         mimetype=mime,
         headers={'Content-Disposition': f'attachment; filename=estagios.{ext}'}
+    )
+
+
+# ── API: Relatórios ──────────────────────────────────────────
+@app.route('/api/relatorios/exportar', methods=['GET'])
+@login_required
+def api_relatorios_exportar():
+    db = get_db()
+    relatorio = request.args.get('relatorio', 'egressos')
+    especialidade = request.args.get('especialidade', '')
+    tipo_id = request.args.get('tipo_id', '')
+    data_inicio = request.args.get('data_inicio', '')
+    data_fim = request.args.get('data_fim', '')
+    mes_ano = request.args.get('mes_ano', '')
+    etapa_filtro = request.args.get('etapa', '')
+    dias_min = int(request.args.get('dias_min', 7) or 7)
+    preview = request.args.get('preview', '')
+
+    sql = '''SELECT e.*, t.nome as tipo_nome,
+             CAST(julianday('now') - julianday(
+                 COALESCE((SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id=e.id), e.created_at)
+             ) AS INTEGER) as dias_na_etapa
+             FROM estagios e JOIN tipo_estagio t ON e.tipo_id=t.id WHERE 1=1'''
+    params = []
+
+    if especialidade:
+        sql += ' AND e.especialidade = ?'
+        params.append(especialidade)
+    if tipo_id:
+        sql += ' AND e.tipo_id = ?'
+        params.append(tipo_id)
+
+    if relatorio == 'egressos':
+        sql += ' AND e.etapa = 8'
+        if data_inicio:
+            sql += ' AND e.termino >= ?'
+            params.append(data_inicio)
+        if data_fim:
+            sql += ' AND e.termino <= ?'
+            params.append(data_fim)
+        sql += ' ORDER BY e.termino DESC, e.nome'
+        headers = ['Nome', 'Email', 'Telefone', 'Especialidade', 'Tipo', 'Inicio', 'Termino', 'Carga Horaria (h)']
+        def row_cols(r):
+            return [r['nome'], r['email'], r['telefone'], r['especialidade'],
+                    r['tipo_nome'], r['inicio'], r['termino'], r['carga_horaria']]
+
+    elif relatorio == 'pendentes':
+        sql += " AND e.status_pagamento IN ('Pendente','Interessado') AND e.etapa < 8"
+        if etapa_filtro != '':
+            sql += ' AND e.etapa = ?'
+            params.append(etapa_filtro)
+        sql += ' ORDER BY e.mes_ano DESC, e.nome'
+        headers = ['Nome', 'Email', 'Telefone', 'Especialidade', 'Tipo', 'Valor', 'Status Pagto', 'Etapa']
+        def row_cols(r):
+            etapa_nome = (ETAPAS_OBS if r['tipo_id'] == 1 else ETAPAS_OBR_OPT).get(r['etapa'], '')
+            return [r['nome'], r['email'], r['telefone'], r['especialidade'],
+                    r['tipo_nome'], r['valor'], r['status_pagamento'],
+                    f"{r['etapa']} - {etapa_nome}"]
+
+    elif relatorio == 'parados':
+        sql += ' AND e.etapa < 8 AND e.etapa > 0'
+        sql += ' ORDER BY e.especialidade, e.nome'
+        headers = ['Nome', 'Email', 'Telefone', 'Especialidade', 'Tipo', 'Etapa', 'Dias na Etapa']
+        def row_cols(r):
+            etapa_nome = (ETAPAS_OBS if r['tipo_id'] == 1 else ETAPAS_OBR_OPT).get(r['etapa'], '')
+            return [r['nome'], r['email'], r['telefone'], r['especialidade'],
+                    r['tipo_nome'], f"{r['etapa']} - {etapa_nome}", r['dias_na_etapa']]
+
+    else:  # especialidade
+        if mes_ano:
+            sql += ' AND e.mes_ano = ?'
+            params.append(mes_ano)
+        sql += ' ORDER BY e.especialidade, e.nome'
+        headers = ['Especialidade', 'Nome', 'Email', 'Telefone', 'Tipo', 'Mes/Ano', 'Inicio', 'Termino']
+        def row_cols(r):
+            return [r['especialidade'], r['nome'], r['email'], r['telefone'],
+                    r['tipo_nome'], r['mes_ano'], r['inicio'], r['termino']]
+
+    rows = db.execute(sql, params).fetchall()
+
+    if relatorio == 'parados':
+        rows = [r for r in rows if (r['dias_na_etapa'] or 0) >= dias_min]
+
+    if preview:
+        data = []
+        for r in rows[:50]:
+            cols = row_cols(r)
+            data.append(dict(zip(headers, [str(v) if v is not None else '' for v in cols])))
+        return jsonify({'data': data, 'total': len(rows), 'headers': headers})
+
+    sep = ';'
+    lines = [sep.join(headers)]
+    for r in rows:
+        lines.append(sep.join(str(v) if v is not None else '' for v in row_cols(r)))
+    csv_content = '\r\n'.join(lines)
+    nome_arquivo = f'relatorio_{relatorio}.csv'
+    return Response(
+        '﻿' + csv_content,
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename={nome_arquivo}'}
     )
 
 
