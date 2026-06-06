@@ -56,3 +56,13 @@ env/
 # Environment variables
 .env
 .env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Spreadsheets / data files
+*.xlsx
+*.xls
+*.csv

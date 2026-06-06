@@ -1,461 +1,386 @@
-const ETAPAS_OBS = {
-    1: 'Venda realizada',
-    2: 'Pagamento confirmado',
-    3: 'Docs enviados',
-    4: 'Docs validados',
-    5: 'Vaga confirmada',
-    6: 'Orientacoes enviadas',
-    7: 'Concluido',
-};
+/* ── Config ────────────────────────────────── */
+const ETAPAS_OBS = {1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Concluido'};
+const ETAPAS_OBR = {0:'Verificacao de vaga',1:'Venda realizada',2:'Pagamento confirmado',3:'Docs enviados',4:'Docs validados',5:'Vaga confirmada',6:'Orientacoes enviadas',7:'Concluido'};
+const ETAPA_COLORS = {0:'#6b7280',1:'#f59e0b',2:'#3b82f6',3:'#8b5cf6',4:'#06b6d4',5:'#10b981',6:'#6366f1',7:'#22c55e'};
+const PER_PAGE = 15;
 
-const ETAPAS_OBR_OPT = {
-    0: 'Verificacao de vaga',
-    1: 'Venda realizada',
-    2: 'Pagamento confirmado',
-    3: 'Docs enviados',
-    4: 'Docs validados',
-    5: 'Vaga confirmada',
-    6: 'Orientacoes enviadas',
-    7: 'Concluido',
-};
+let currentPage = 1;
+let totalPages = 1;
+let totalItems = 0;
 
-const ETAPA_COLORS = {
-    0: '#6b7280',
-    1: '#f59e0b',
-    2: '#3b82f6',
-    3: '#8b5cf6',
-    4: '#06b6d4',
-    5: '#10b981',
-    6: '#6366f1',
-    7: '#22c55e',
-};
+/* ── Init ─────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+    loadTheme();
+    await loadUserInfo();
+    await loadTipos();
+    await loadFormasPagamento();
+    await loadFiltros();
+    loadEstagios();
+    bindFilterEvents();
+    bindCPFMask();
+    bindTelefoneMask();
+});
 
-const MESES = [
-    'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-];
-
-let currentEstagioId = null;
-let deleteEstagioId = null;
-let tipos = [];
-let debounceTimer = null;
-
-function getEtapaNome(tipoId, etapa) {
-    const map = tipoId === 1 ? ETAPAS_OBS : ETAPAS_OBR_OPT;
-    return map[etapa] || 'Desconhecida';
+/* ── Theme ────────────────────────────────── */
+function loadTheme() {
+    const t = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+}
+function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
 }
 
-function getEtapaMax(tipoId) {
-    return 7;
-}
-
-function getEtapaMin(tipoId) {
-    return tipoId === 1 ? 1 : 0;
-}
-
-function formatMesAno(mesAno) {
-    if (!mesAno) return '';
-    const [y, m] = mesAno.split('-');
-    return MESES[parseInt(m, 10) - 1] + ' ' + y;
-}
-
-function formatCurrency(v) {
-    if (v == null) return '-';
-    return 'R$ ' + parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatDate(d) {
-    if (!d) return '-';
-    const parts = d.split('-');
-    return parts[2] + '/' + parts[1] + '/' + parts[0];
-}
-
-function badgeHTML(tipoId, etapa) {
-    const tipoNome = tipos.find(t => t.id === tipoId)?.nome || '';
-    let tipoClass = 'badge-obs';
-    if (tipoId === 2) tipoClass = 'badge-obr';
-    if (tipoId === 3) tipoClass = 'badge-opt';
-    const etapaNome = getEtapaNome(tipoId, etapa);
-    const etapaColor = ETAPA_COLORS[etapa] || '#6b7280';
-    return `<span class="badge badge-tipo ${tipoClass}">${tipoNome}</span> <span class="badge" style="background:${etapaColor}">${etapa} - ${etapaNome}</span>`;
-}
-
-async function apiFetch(url, options) {
-    const resp = await fetch(url, options);
-    if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.erro || 'Erro na requisicao');
-    }
-    return resp;
-}
-
-function openModal(id) {
-    document.getElementById(id).classList.add('active');
-}
-
-function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
-}
-
+/* ── Sidebar ──────────────────────────────── */
 function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
 }
 
+/* ── User Info ────────────────────────────── */
+async function loadUserInfo() {
+ try {
+ const r = await fetch('/api/me');
+ if (r.ok) {
+ const u = await r.json();
+ const el = document.getElementById('sidebar-user');
+ el.innerHTML = `<strong>${u.nome}</strong><span>${u.role}</span>`;
+ // Mostrar link Usuarios so para admin
+ const navUsers = document.getElementById('nav-usuarios');
+ if (navUsers && u.role === 'admin') navUsers.style.display = '';
+ }
+ } catch(e) { /* ignore */ }
+}
+
+/* ── Dropdowns ────────────────────────────── */
 async function loadTipos() {
-    const resp = await fetch('/api/tipos');
-    tipos = await resp.json();
-    const sel = document.getElementById('est-tipo');
-    sel.innerHTML = '<option value="">Selecione...</option>';
-    const filtroTipo = document.getElementById('filtro-tipo');
+    const r = await fetch('/api/tipos');
+    const tipos = await r.json();
+    const sel = document.getElementById('filtro-tipo');
+    const formSel = document.getElementById('form-tipo');
     tipos.forEach(t => {
         sel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
-        filtroTipo.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
+        formSel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
     });
 }
 
-async function loadEspecialidades() {
-    const resp = await fetch('/api/especialidades');
-    const list = await resp.json();
-    const sel = document.getElementById('filtro-especialidade');
-    sel.innerHTML = '<option value="">Todas</option>';
-    list.forEach(e => {
-        sel.innerHTML += `<option value="${e}">${e}</option>`;
-    });
+async function loadFormasPagamento() {
+    const r = await fetch('/api/formas-pagamento');
+    const formas = await r.json();
+    const sel = document.getElementById('form-forma-pag');
+    sel.innerHTML = '<option value="">Selecione</option>';
+    formas.forEach(f => { sel.innerHTML += `<option value="${f}">${f}</option>`; });
 }
 
-async function loadMeses() {
-    const resp = await fetch('/api/meses');
-    const list = await resp.json();
-    const sel = document.getElementById('filtro-mes');
-    sel.innerHTML = '<option value="">Todos</option>';
-    list.forEach(m => {
-        sel.innerHTML += `<option value="${m}">${formatMesAno(m)}</option>`;
-    });
+async function loadFiltros() {
+    const [espR, mesR] = await Promise.all([fetch('/api/especialidades'), fetch('/api/meses')]);
+    const esp = await espR.json();
+    const mes = await mesR.json();
+    const selEsp = document.getElementById('filtro-especialidade');
+    const selMes = document.getElementById('filtro-mes');
+    esp.forEach(e => { selEsp.innerHTML += `<option value="${e}">${e}</option>`; });
+    mes.forEach(m => { selMes.innerHTML += `<option value="${m}">${m}</option>`; });
 }
 
-function loadEtapaFilter() {
-    const sel = document.getElementById('filtro-etapa');
-    sel.innerHTML = '<option value="">Todas</option>';
-    sel.innerHTML += '<option value="0">0 - Verificacao de vaga</option>';
-    for (let i = 1; i <= 7; i++) {
-        sel.innerHTML += `<option value="${i}">${i} - ${ETAPAS_OBS[i]}</option>`;
-    }
-}
-
-function getFilters() {
-    return {
-        tipo_id: document.getElementById('filtro-tipo').value,
-        especialidade: document.getElementById('filtro-especialidade').value,
-        etapa: document.getElementById('filtro-etapa').value,
-        mes_ano: document.getElementById('filtro-mes').value,
-        busca: document.getElementById('filtro-busca').value,
-    };
-}
-
-async function loadEstagios() {
-    const f = getFilters();
-    const params = new URLSearchParams();
-    if (f.tipo_id) params.set('tipo_id', f.tipo_id);
-    if (f.especialidade) params.set('especialidade', f.especialidade);
-    if (f.etapa !== '') params.set('etapa', f.etapa);
-    if (f.mes_ano) params.set('mes_ano', f.mes_ano);
-    if (f.busca) params.set('busca', f.busca);
-
-    const resp = await fetch('/api/estagios?' + params.toString());
-    const estagios = await resp.json();
-    renderEstagios(estagios);
-}
-
-function renderEstagios(estagios) {
-    const container = document.getElementById('estagios-container');
-
-    if (estagios.length === 0) {
-        container.innerHTML = '<p class="empty-state">Nenhum estagio encontrado.</p>';
-        return;
-    }
-
-    const groups = {};
-    estagios.forEach(e => {
-        const key = e.mes_ano + '-S' + e.semana;
-        if (!groups[key]) {
-            groups[key] = { mes_ano: e.mes_ano, semana: e.semana, items: [] };
-        }
-        groups[key].items.push(e);
-    });
-
-    const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-
-    let html = '';
-    sortedKeys.forEach(key => {
-        const g = groups[key];
-        html += `<div class="group-header">${formatMesAno(g.mes_ano)} — Semana ${g.semana}</div>`;
-        html += `<div class="table-wrapper"><table>
-            <thead><tr>
-                <th>Tipo / Etapa</th>
-                <th>Nome</th>
-                <th>Especialidade</th>
-                <th>Cracha</th>
-                <th>Valor</th>
-                <th>Termino</th>
-                <th>Email</th>
-                <th>Telefone</th>
-                <th>Docs</th>
-                <th>Certificado</th>
-                <th>Acoes</th>
-            </tr></thead><tbody>`;
-
-        g.items.forEach(e => {
-            html += `<tr data-id="${e.id}">
-                <td>${badgeHTML(e.tipo_id, e.etapa)}</td>
-                <td class="nome-cell">${escHtml(e.nome)}</td>
-                <td>${escHtml(e.especialidade)}</td>
-                <td>${escHtml(e.cracha || '-')}</td>
-                <td class="valor-cell">${formatCurrency(e.valor)}</td>
-                <td>${formatDate(e.termino)}</td>
-                <td>${escHtml(e.email || '-')}</td>
-                <td>${escHtml(e.telefone || '-')}</td>
-                <td>${escHtml(e.documentos || '-')}</td>
-                <td>${formatDate(e.envio_certificado)}</td>
-                <td class="actions-cell">
-                    <button class="btn btn-sm btn-ghost" onclick="openHistorico(${e.id})" title="Historico">&#9776;</button>
-                    <button class="btn btn-sm btn-primary" onclick="openEditModal(${e.id})" title="Editar">&#9998;</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmDelete(${e.id})" title="Excluir">&times;</button>
-                </td>
-            </tr>`;
+/* ── Filters ──────────────────────────────── */
+function bindFilterEvents() {
+    ['filtro-busca','filtro-tipo','filtro-especialidade','filtro-mes','filtro-status-pag'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => {
+            currentPage = 1;
+            loadEstagios();
         });
-
-        html += '</tbody></table></div>';
     });
-
-    container.innerHTML = html;
 }
 
-function escHtml(s) {
-    const div = document.createElement('div');
-    div.textContent = s;
-    return div.innerHTML;
-}
-
-function openCreateModal() {
-    document.getElementById('modal-estagio-title').textContent = 'Novo Estagio';
-    document.getElementById('estagio-id').value = '';
-    document.getElementById('est-tipo').value = '';
-    document.getElementById('est-mes-ano').value = '';
-    document.getElementById('est-semana').value = '1';
-    document.getElementById('est-nome').value = '';
-    document.getElementById('est-especialidade').value = '';
-    document.getElementById('est-cracha').value = '';
-    document.getElementById('est-valor').value = '';
-    document.getElementById('est-termino').value = '';
-    document.getElementById('est-email').value = '';
-    document.getElementById('est-telefone').value = '';
-    document.getElementById('est-documentos').value = '';
-    document.getElementById('est-certificado').value = '';
-    document.getElementById('est-observacao').value = '';
-    openModal('modal-estagio');
-}
-
-async function openEditModal(id) {
-    const resp = await fetch('/api/estagios');
-    const estagios = await resp.json();
-    const e = estagios.find(x => x.id === id);
-    if (!e) return;
-
-    document.getElementById('modal-estagio-title').textContent = 'Editar Estagio';
-    document.getElementById('estagio-id').value = e.id;
-    document.getElementById('est-tipo').value = e.tipo_id;
-    document.getElementById('est-mes-ano').value = e.mes_ano;
-    document.getElementById('est-semana').value = e.semana;
-    document.getElementById('est-nome').value = e.nome;
-    document.getElementById('est-especialidade').value = e.especialidade;
-    document.getElementById('est-cracha').value = e.cracha || '';
-    document.getElementById('est-valor').value = e.valor || '';
-    document.getElementById('est-termino').value = e.termino || '';
-    document.getElementById('est-email').value = e.email || '';
-    document.getElementById('est-telefone').value = e.telefone || '';
-    document.getElementById('est-documentos').value = e.documentos || '';
-    document.getElementById('est-certificado').value = e.envio_certificado || '';
-    document.getElementById('est-observacao').value = e.observacao || '';
-    openModal('modal-estagio');
-}
-
-async function saveEstagio() {
-    const id = document.getElementById('estagio-id').value;
-    const data = {
-        tipo_id: parseInt(document.getElementById('est-tipo').value, 10),
-        mes_ano: document.getElementById('est-mes-ano').value,
-        semana: parseInt(document.getElementById('est-semana').value, 10),
-        nome: document.getElementById('est-nome').value,
-        especialidade: document.getElementById('est-especialidade').value,
-        cracha: document.getElementById('est-cracha').value || null,
-        valor: document.getElementById('est-valor').value || null,
-        termino: document.getElementById('est-termino').value || null,
-        email: document.getElementById('est-email').value || null,
-        telefone: document.getElementById('est-telefone').value || null,
-        documentos: document.getElementById('est-documentos').value || null,
-        envio_certificado: document.getElementById('est-certificado').value || null,
-        observacao: document.getElementById('est-observacao').value || null,
-    };
-
-    if (!data.tipo_id || !data.mes_ano || !data.nome || !data.especialidade) {
-        alert('Preencha os campos obrigatorios: Tipo, Mes/Ano, Nome, Especialidade.');
-        return;
-    }
-
-    try {
-        if (id) {
-            await apiFetch('/api/estagios/' + id, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        } else {
-            await apiFetch('/api/estagios', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        }
-        closeModal('modal-estagio');
-        await loadEstagios();
-        await loadEspecialidades();
-        await loadMeses();
-    } catch (err) {
-        alert('Erro ao salvar: ' + err.message);
-    }
-}
-
-function confirmDelete(id) {
-    deleteEstagioId = id;
-    openModal('modal-confirm');
-    document.getElementById('btn-confirm-delete').onclick = async () => {
-        try {
-            await apiFetch('/api/estagios/' + deleteEstagioId, { method: 'DELETE' });
-            closeModal('modal-confirm');
-            await loadEstagios();
-            await loadEspecialidades();
-            await loadMeses();
-        } catch (err) {
-            alert('Erro ao excluir: ' + err.message);
-        }
-    };
-}
-
-async function openHistorico(id) {
-    currentEstagioId = id;
-    const resp = await fetch('/api/estagios');
-    const estagios = await resp.json();
-    const est = estagios.find(x => x.id === id);
-    if (!est) return;
-
-    document.getElementById('modal-historico-title').textContent = 'Historico — ' + est.nome;
-
-    const histResp = await fetch('/api/estagios/' + id + '/historico');
-    const historico = await histResp.json();
-
-    const list = document.getElementById('historico-list');
-    if (historico.length === 0) {
-        list.innerHTML = '<p class="empty-state">Nenhum registro.</p>';
-    } else {
-        list.innerHTML = historico.map(h => {
-            const etapaNome = getEtapaNome(est.tipo_id, h.etapa);
-            const color = ETAPA_COLORS[h.etapa] || '#6b7280';
-            return `<div class="historico-item">
-                <div class="historico-dot" style="background:${color}"></div>
-                <div class="historico-content">
-                    <strong>${h.etapa} - ${etapaNome}</strong>
-                    ${h.observacao ? '<p>' + escHtml(h.observacao) + '</p>' : ''}
-                    <span>${h.responsavel || ''} — ${h.ts}</span>
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    const maxEtapa = getEtapaMax(est.tipo_id);
-    const btnAvancar = document.getElementById('btn-avancar');
-    if (est.etapa >= maxEtapa) {
-        btnAvancar.disabled = true;
-        btnAvancar.textContent = 'Concluido';
-    } else {
-        btnAvancar.disabled = false;
-        btnAvancar.textContent = 'Avancar para: ' + getEtapaNome(est.tipo_id, est.etapa + 1);
-    }
-
-    document.getElementById('avancar-responsavel').value = '';
-    document.getElementById('avancar-obs').value = '';
-    openModal('modal-historico');
-}
-
-async function avancarEtapa() {
-    if (!currentEstagioId) return;
-    const responsavel = document.getElementById('avancar-responsavel').value || 'Sistema';
-    const obs = document.getElementById('avancar-obs').value || '';
-
-    try {
-        await apiFetch('/api/estagios/' + currentEstagioId + '/avancar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ responsavel, observacao: obs }),
-        });
-        await openHistorico(currentEstagioId);
-        await loadEstagios();
-    } catch (err) {
-        alert('Erro ao avancar etapa: ' + err.message);
-    }
-}
-
-function exportCSV() {
-    const f = getFilters();
-    const params = new URLSearchParams();
-    if (f.tipo_id) params.set('tipo_id', f.tipo_id);
-    if (f.especialidade) params.set('especialidade', f.especialidade);
-    if (f.etapa !== '') params.set('etapa', f.etapa);
-    if (f.mes_ano) params.set('mes_ano', f.mes_ano);
-    if (f.busca) params.set('busca', f.busca);
-
-    window.location.href = '/api/exportar-csv?' + params.toString();
-}
-
-function clearFilters() {
+function limparFiltros() {
     document.getElementById('filtro-busca').value = '';
     document.getElementById('filtro-tipo').value = '';
     document.getElementById('filtro-especialidade').value = '';
-    document.getElementById('filtro-etapa').value = '';
     document.getElementById('filtro-mes').value = '';
+    document.getElementById('filtro-status-pag').value = '';
+    currentPage = 1;
     loadEstagios();
 }
 
-function setupFilters() {
-    const ids = ['filtro-busca', 'filtro-tipo', 'filtro-especialidade', 'filtro-etapa', 'filtro-mes'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(loadEstagios, 300);
-        });
-    });
+function getFilterParams() {
+    const p = new URLSearchParams();
+    p.set('page', currentPage);
+    p.set('per_page', PER_PAGE);
+    const v = (id) => document.getElementById(id).value;
+    if (v('filtro-busca')) p.set('busca', v('filtro-busca'));
+    if (v('filtro-tipo')) p.set('tipo_id', v('filtro-tipo'));
+    if (v('filtro-especialidade')) p.set('especialidade', v('filtro-especialidade'));
+    if (v('filtro-mes')) p.set('mes_ano', v('filtro-mes'));
+    if (v('filtro-status-pag')) p.set('status_pagamento', v('filtro-status-pag'));
+    return p;
 }
 
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
-        document.getElementById('sidebar').classList.remove('open');
+/* ── Load Estagios ────────────────────────── */
+async function loadEstagios() {
+    const r = await fetch(`/api/estagios?${getFilterParams()}`);
+    const data = await r.json();
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    if (data.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">Nenhum estagio encontrado</td></tr>';
     }
-});
 
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', e => {
-        if (e.target === overlay) overlay.classList.remove('active');
+    data.data.forEach(e => {
+        const tipoBadge = e.tipo_id === 1 ? 'badge-obs' : e.tipo_id === 2 ? 'badge-obr' : 'badge-opt';
+        const etapas = e.tipo_id === 1 ? ETAPAS_OBS : ETAPAS_OBR;
+        const minE = e.tipo_id === 1 ? 1 : 0;
+        const etapaNome = etapas[e.etapa] || '';
+        const etapaColor = ETAPA_COLORS[e.etapa] || '#6b7280';
+        const dots = Array.from({length: 8 - minE}, (_, i) => {
+            const step = minE + i;
+            let cls = '';
+            if (step < e.etapa) cls = 'filled';
+            else if (step === e.etapa) cls = 'current';
+            return `<span class="progress-dot ${cls}"></span>`;
+        }).join('');
+
+        const statusBadge = e.status_pagamento === 'Pago' ? 'background:#22c55e'
+            : e.status_pagamento === 'Isento' ? 'background:#8b5cf6'
+            : e.status_pagamento === 'Interessado' ? 'background:#6b7280'
+            : 'background:#f59e0b';
+
+        tbody.innerHTML += `<tr>
+            <td><span class="badge ${tipoBadge}">${e.tipo_nome}</span></td>
+            <td><strong>${e.nome}</strong></td>
+            <td>${e.cpf || '-'}</td>
+            <td>${e.especialidade}</td>
+            <td>${e.cracha || '-'}</td>
+            <td>${e.inicio || '-'}</td>
+            <td>${e.termino || '-'}</td>
+            <td>${e.valor ? 'R$ ' + Number(e.valor).toFixed(2) : '-'}</td>
+            <td><span class="badge" style="${statusBadge}">${e.status_pagamento || 'Interessado'}</span></td>
+            <td>
+                <div class="progress-bar">${dots}</div>
+                <div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;">${e.etapa} - ${etapaNome}</div>
+            </td>
+            <td style="white-space:nowrap;">
+                <button class="btn-icon" title="Historico" onclick="verHistorico(${e.id},'${e.nome}')">&#9776;</button>
+                <button class="btn-icon" title="Editar" onclick="editarEstagio(${e.id})">&#9998;</button>
+                <button class="btn-icon" title="PDF" onclick="exportarPDF(${e.id})">&#128196;</button>
+                <button class="btn-icon" title="Avancar etapa" onclick="avancarEtapa(${e.id},'${e.nome}')">&#10148;</button>
+                <button class="btn-icon" title="Excluir" style="color:var(--color-danger);" onclick="confirmarExclusao(${e.id},'${e.nome}')">&#128465;</button>
+            </td>
+        </tr>`;
     });
-});
 
-async function init() {
-    await loadTipos();
-    loadEtapaFilter();
-    await loadEspecialidades();
-    await loadMeses();
-    setupFilters();
-    await loadEstagios();
+    // Pagination
+    totalItems = data.total;
+    totalPages = data.total_pages;
+    renderPagination();
 }
 
-init();
+/* ── Pagination ───────────────────────────── */
+function renderPagination() {
+    const info = document.getElementById('pagination-info');
+    const controls = document.getElementById('pagination-controls');
+    const start = (currentPage - 1) * PER_PAGE + 1;
+    const end = Math.min(currentPage * PER_PAGE, totalItems);
+    info.textContent = totalItems > 0 ? `Mostrando ${start}-${end} de ${totalItems}` : 'Nenhum resultado';
+
+    controls.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    // Prev
+    controls.innerHTML += `<button class="page-btn" ${currentPage <= 1 ? 'disabled' : ''} onclick="goToPage(${currentPage-1})">&laquo;</button>`;
+
+    // Pages
+    const maxButtons = 7;
+    let startPage = Math.max(1, currentPage - 3);
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage < maxButtons - 1) startPage = Math.max(1, endPage - maxButtons + 1);
+
+    for (let i = startPage; i <= endPage; i++) {
+        controls.innerHTML += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+    }
+
+    // Next
+    controls.innerHTML += `<button class="page-btn" ${currentPage >= totalPages ? 'disabled' : ''} onclick="goToPage(${currentPage+1})">&raquo;</button>`;
+}
+
+function goToPage(p) {
+    currentPage = p;
+    loadEstagios();
+    window.scrollTo(0, 0);
+}
+
+/* ── Modals ───────────────────────────────── */
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function abrirModalNovo() {
+    document.getElementById('modal-form-title').textContent = 'Novo Estagio';
+    document.getElementById('form-id').value = '';
+    ['form-tipo','form-mes-ano','form-semana','form-nome','form-cpf','form-especialidade',
+     'form-cracha','form-valor','form-forma-pag','form-status-pag','form-comprovante',
+     'form-inicio','form-termino','form-email','form-telefone','form-documentos',
+     'form-certificado','form-observacao'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        else el.value = '';
+    });
+    document.getElementById('form-status-pag').value = 'Interessado';
+    abrirModal('modal-form');
+}
+
+async function editarEstagio(id) {
+    const r = await fetch(`/api/estagios?per_page=1`);
+    // We need a single-item endpoint; fetch all and find
+    const r2 = await fetch(`/api/estagios?per_page=1000`);
+    const data = await r2.json();
+    const e = data.data.find(x => x.id === id);
+    if (!e) return;
+
+    document.getElementById('modal-form-title').textContent = 'Editar Estagio';
+    document.getElementById('form-id').value = e.id;
+    document.getElementById('form-tipo').value = e.tipo_id;
+    document.getElementById('form-mes-ano').value = e.mes_ano;
+    document.getElementById('form-semana').value = e.semana;
+    document.getElementById('form-nome').value = e.nome;
+    document.getElementById('form-cpf').value = e.cpf || '';
+    document.getElementById('form-especialidade').value = e.especialidade;
+    document.getElementById('form-cracha').value = e.cracha || '';
+    document.getElementById('form-valor').value = e.valor || '';
+    document.getElementById('form-forma-pag').value = e.forma_pagamento || '';
+    document.getElementById('form-status-pag').value = e.status_pagamento || 'Interessado';
+    document.getElementById('form-comprovante').value = e.comprovante_pagamento || '';
+    document.getElementById('form-inicio').value = e.inicio || '';
+    document.getElementById('form-termino').value = e.termino || '';
+    document.getElementById('form-email').value = e.email || '';
+    document.getElementById('form-telefone').value = e.telefone || '';
+    document.getElementById('form-documentos').value = e.documentos || '';
+    document.getElementById('form-certificado').value = e.envio_certificado || '';
+    document.getElementById('form-observacao').value = e.observacao || '';
+    abrirModal('modal-form');
+}
+
+async function salvarEstagio() {
+    const id = document.getElementById('form-id').value;
+    const body = {
+        tipo_id: parseInt(document.getElementById('form-tipo').value),
+        mes_ano: document.getElementById('form-mes-ano').value,
+        semana: parseInt(document.getElementById('form-semana').value),
+        nome: document.getElementById('form-nome').value,
+        cpf: document.getElementById('form-cpf').value,
+        especialidade: document.getElementById('form-especialidade').value,
+        cracha: document.getElementById('form-cracha').value,
+        valor: parseFloat(document.getElementById('form-valor').value) || 0,
+        forma_pagamento: document.getElementById('form-forma-pag').value,
+        status_pagamento: document.getElementById('form-status-pag').value,
+        comprovante_pagamento: document.getElementById('form-comprovante').value,
+        inicio: document.getElementById('form-inicio').value,
+        termino: document.getElementById('form-termino').value,
+        email: document.getElementById('form-email').value,
+        telefone: document.getElementById('form-telefone').value,
+        documentos: document.getElementById('form-documentos').value,
+        envio_certificado: document.getElementById('form-certificado').value,
+        observacao: document.getElementById('form-observacao').value,
+    };
+
+    if (!body.nome || !body.especialidade || !body.mes_ano || !body.semana) {
+        alert('Preencha os campos obrigatorios: Nome, Especialidade, Mes/Ano, Semana');
+        return;
+    }
+
+    let r;
+    if (id) {
+        r = await fetch(`/api/estagios/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    } else {
+        r = await fetch('/api/estagios', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    }
+
+    if (!r.ok) {
+        const err = await r.json();
+        alert(err.erro || 'Erro ao salvar');
+        return;
+    }
+
+    fecharModal('modal-form');
+    loadEstagios();
+}
+
+async function avancarEtapa(id, nome) {
+    if (!confirm(`Avancar etapa de ${nome}?`)) return;
+    const r = await fetch(`/api/estagios/${id}/avancar`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    if (!r.ok) {
+        const err = await r.json();
+        alert(err.erro || 'Erro ao avancar');
+        return;
+    }
+    loadEstagios();
+}
+
+async function verHistorico(id, nome) {
+    document.getElementById('modal-historico-title').textContent = `Historico - ${nome}`;
+    const r = await fetch(`/api/estagios/${id}/historico`);
+    const hist = await r.json();
+    const tbody = document.getElementById('tbody-historico');
+    tbody.innerHTML = '';
+    if (hist.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--color-text-muted);">Sem historico</td></tr>';
+    }
+    hist.forEach(h => {
+        tbody.innerHTML += `<tr>
+            <td><span class="badge" style="background:${ETAPA_COLORS[h.etapa] || '#6b7280'}">${h.etapa}</span></td>
+            <td>${h.observacao || '-'}</td>
+            <td>${h.responsavel || '-'}</td>
+            <td>${h.ts || '-'}</td>
+        </tr>`;
+    });
+    abrirModal('modal-historico');
+}
+
+let deleteId = null;
+function confirmarExclusao(id, nome) {
+    deleteId = id;
+    document.getElementById('delete-msg').textContent = `Excluir estagio de "${nome}"? Esta acao nao pode ser desfeita.`;
+    document.getElementById('btn-confirm-delete').onclick = async () => {
+        await fetch(`/api/estagios/${deleteId}`, { method: 'DELETE' });
+        fecharModal('modal-delete');
+        loadEstagios();
+    };
+    abrirModal('modal-delete');
+}
+
+/* ── Export CSV ────────────────────────────── */
+function exportarCSV() {
+    const sep = document.getElementById('csv-separator').value;
+    const params = getFilterParams();
+    params.set('separador', sep);
+    window.open(`/api/exportar-csv?${params}`, '_blank');
+}
+
+/* ── Export PDF ────────────────────────────── */
+function exportarPDF(id) {
+    window.open(`/api/estagios/${id}/pdf`, '_blank');
+}
+
+/* ── CPF Mask ─────────────────────────────── */
+function bindCPFMask() {
+    const el = document.getElementById('form-cpf');
+    el.addEventListener('input', () => {
+        let v = el.value.replace(/\D/g, '').slice(0, 11);
+        if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4');
+        else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+        else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+        el.value = v;
+    });
+}
+
+/* ── Telefone Mask ────────────────────────── */
+function bindTelefoneMask() {
+    const el = document.getElementById('form-telefone');
+    el.addEventListener('input', () => {
+        let v = el.value.replace(/\D/g, '').slice(0, 11);
+        if (v.length > 6) v = v.replace(/(\d{2})(\d{5})(\d{1,4})/, '($1) $2-$3');
+        else if (v.length > 2) v = v.replace(/(\d{2})(\d{1,5})/, '($1) $2');
+        el.value = v;
+    });
+}

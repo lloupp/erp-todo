@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Estagios Medicos</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Estagios</h1>
+            <p class="subtitle">Santa Casa / UFCSPA</p>
+        </div>
+        <div class="sidebar-body">
+            <div class="sidebar-nav">
+                <a href="/" class="nav-link">Estagios</a>
+                <a href="/dashboard" class="nav-link active">Dashboard</a>
+            </div>
+            <div class="sidebar-actions" style="margin-top:auto;">
+                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2>Dashboard</h2>
+        </div>
+        <div id="dashboard-container" class="dashboard-container">
+            <p class="empty-state">Carregando...</p>
+        </div>
+    </main>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
