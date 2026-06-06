@@ -3,3 +3,4 @@ flask-login==0.6.3
 flask-weasyprint==1.2.0
 openpyxl>=3.1
 gunicorn>=22.0
+waitress>=3.0
