@@ -24,6 +24,12 @@ function loadTheme() {
     document.documentElement.setAttribute('data-theme', t);
 }
 
+function fmtDate(s) {
+    if (!s) return '-';
+    const d = s.split(/[T ]/)[0].split('-');
+    return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : s;
+}
+
 async function loadDashboard() {
     try {
         const r = await fetch('/api/dashboard');
@@ -130,7 +136,7 @@ function renderDashboard(d) {
                     <td>${r.tipo_nome}</td>
                     <td>${r.especialidade}</td>
                     <td>${r.etapa}</td>
-                    <td>${r.updated_at || '-'}</td>
+                    <td>${fmtDate(r.updated_at)}</td>
                 </tr>`).join('')}
             </tbody>
         </table>
