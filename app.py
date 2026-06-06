@@ -905,12 +905,12 @@ def _parse_aba_xlsx(ws, mes_ano_fixo, ano):
                 rec[field] = _xclean(v)
             elif field == 'cracha':
                 cv = _xclean(v)
-                if cv in (None, '0', '0.0', 'devolvido', 'Devolvido'):
+                if not cv or str(cv) in ('0', '0.0') or (isinstance(cv, str) and cv.lower() == 'devolvido'):
                     rec['cracha'] = None
-                elif isinstance(cv, str) and cv.replace('.', '').isdigit():
-                    rec['cracha'] = str(int(float(cv)))
+                elif str(cv).replace('.', '').isdigit():
+                    rec['cracha'] = str(int(float(str(cv))))
                 else:
-                    rec['cracha'] = cv
+                    rec['cracha'] = str(cv)
             elif field == '_modalidade':
                 cv = (_xclean(v) or '').lower()
                 if 'obrig' in cv:
@@ -970,11 +970,11 @@ def api_importar_excel():
         ws = wb[sheet_name]
         all_records.extend(_parse_aba_xlsx(ws, mes_ano_fixo, ano))
 
-    # Dedup contra registros existentes
+    # Dedup contra registros existentes (lower() em Python pois SQLite não trata acentos)
     db = get_db()
     existing = set()
-    for row in db.execute('SELECT lower(nome), lower(coalesce(especialidade,"")), mes_ano FROM estagios').fetchall():
-        existing.add((row[0], row[1], row[2]))
+    for row in db.execute('SELECT nome, coalesce(especialidade,""), mes_ano FROM estagios').fetchall():
+        existing.add((row[0].lower() if row[0] else '', row[1].lower(), row[2]))
 
     novos, duplicados = [], []
     for rec in all_records:
@@ -1139,6 +1139,10 @@ if __name__ == '__main__':
            db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
         except Exception:
            pass
+        # Migrate usuarios table columns
+        u_cols = [r[1] for r in db.execute('PRAGMA table_info(usuarios)').fetchall()]
+        if u_cols and 'last_login' not in u_cols:
+            db.execute('ALTER TABLE usuarios ADD COLUMN last_login DATETIME')
         # Create new tables if not exist
         db.execute('''CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
