@@ -266,6 +266,8 @@ def login_page():
         if row and verify_password(password, row['password_hash']):
             user = User(row['id'], row['username'], row['nome'], row['role'])
             login_user(user)
+            db.execute('UPDATE usuarios SET last_login=CURRENT_TIMESTAMP WHERE id=?', (user.id,))
+            db.commit()
             next_page = request.args.get('next', '/')
             if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
                 return jsonify({'ok': True, 'nome': user.nome, 'role': user.role})
