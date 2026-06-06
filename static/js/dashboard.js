@@ -1,7 +1,21 @@
 document.addEventListener('DOMContentLoaded', async () => {
     loadTheme();
+    loadUserInfo();
     await loadDashboard();
 });
+
+async function loadUserInfo() {
+    try {
+        const r = await fetch('/api/me');
+        const d = await r.json();
+        const el = document.getElementById('sidebar-user');
+        if (el) el.innerHTML = `<strong>${d.nome}</strong><span>${d.role}</span>`;
+        if (d.role === 'admin') {
+            const nav = document.getElementById('nav-usuarios');
+            if (nav) nav.style.display = '';
+        }
+    } catch(e) {}
+}
 
 function loadTheme() {
     const t = localStorage.getItem('theme') || 'light';

@@ -10,26 +10,38 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Run (debug mode, port 5000)
+# Run (debug mode, porta 5000)
 python app.py
 
-# Reset database (wipes and re-seeds with sample data)
+# Produção (Gunicorn)
+gunicorn -c gunicorn.conf.py app:app
+
+# Reset do banco (apaga e recria com dados de exemplo)
 rm estagios.db && python app.py
+
+# Backup manual do SQLite
+./backup.sh
 ```
 
-Default credentials: `admin/admin` (role: admin) and `user/user` (role: user).
+Default credentials: `admin/admin` (role: admin) e `user/user` (role: user).
 
 ## Architecture
 
-Single-file Flask backend (`app.py`) + vanilla JS frontend, no build step.
+Single-file Flask backend (`app.py`) + vanilla JS frontend, sem build step.
 
-**Backend** (`app.py`): All routes, DB initialization, business logic, and constants in one file. Database connection is managed via Flask `g` — `get_db()` opens it, `@app.teardown_appcontext` closes it. SQLite rows use `sqlite3.Row` for dict-like access.
+**Backend** (`app.py`): Todas as rotas, inicialização do banco, lógica de negócio e constantes em um único arquivo. Conexão com banco gerenciada via Flask `g` — `get_db()` abre, `@app.teardown_appcontext` fecha. Rows do SQLite usam `sqlite3.Row` para acesso dict-like.
 
-**Frontend**: Three page templates (`login.html`, `index.html`, `dashboard.html`) served by Flask. Client logic lives in `static/js/app.js` (main CRUD, modals, filters) and `static/js/dashboard.js` (dashboard charts/stats). No JS framework — vanilla ES6 with direct DOM manipulation. API calls go through `apiFetch(url, options)` which handles JSON parsing and error toasts.
+**Frontend**: Quatro templates (`login.html`, `index.html`, `dashboard.html`, `usuarios.html`) servidos pelo Flask. Lógica client-side em `static/js/app.js` (CRUD principal, modais, filtros) e `static/js/dashboard.js` (gráficos/stats do dashboard). Sem framework JS — vanilla ES6 com manipulação direta do DOM. Chamadas API passam por `apiFetch(url, options)` que trata JSON e exibe toasts de erro.
 
-**Auth**: `flask-login` with session cookies. Role-based: `admin` can manage users (`/usuarios`); `user` cannot. Password hashing uses SHA-256 with a random salt (no bcrypt).
+**Auth**: `flask-login` com session cookies. Role-based: `admin` gerencia usuários (`/usuarios`); `user` não acessa. Hashing de senha com SHA-256 + salt aleatório. `last_login` gravado a cada login bem-sucedido.
 
-**PDF export**: `flask-weasyprint` renders `templates/pdf_ficha.html` server-side; falls back to printable HTML if WeasyPrint fails.
+**PDF export**: `flask-weasyprint` renderiza `templates/pdf_ficha.html` server-side; fallback para HTML imprimível se WeasyPrint falhar.
+
+**Importação Excel**: `openpyxl` parseia a planilha de controle de vagas. Endpoint `POST /api/importar-excel` — `confirmar=0` retorna preview (sem gravar), `confirmar=1` grava. Deduplicação por `(nome.lower(), especialidade.lower(), mes_ano)` usando Python (não SQLite, que não trata acentos corretamente com `lower()`).
+
+**Alertas de prazo**: Campo `dias_na_etapa` calculado via subquery `julianday()` no SQLite contra `historico_etapas`. Na tabela principal, badge laranja (⚠ Xd) após 7 dias e vermelho após 14 dias na mesma etapa.
+
+**Backup**: `backup.sh` copia o SQLite para `backups/` com retenção de 7 dias. Crontab sugerido: `0 2 * * * /path/to/erp-todo/backup.sh`.
 
 ## Database Schema
 
@@ -44,33 +56,43 @@ historico_etapas(id, estagio_id, etapa, observacao, responsavel, ts)
 notificacoes(id, estagio_id, tipo, mensagem, email_destino, enviado, ts)
 ```
 
-Schema migrations are handled inline in `app.py`'s `__main__` block via `ALTER TABLE` — there is no migration framework.
+Migrações de schema são feitas inline no bloco `__main__` do `app.py` via `ALTER TABLE IF NOT EXISTS` — não há framework de migração.
 
 ## Workflow Stages
 
-Observership starts at etapa 1; Obrigatório/Optativo start at etapa 0. All types share etapas 1–7.
+Observership começa na etapa 1; Obrigatório/Optativo na etapa 0. Todos compartilham etapas 1–7.
 
 | Etapa | Observership | Obrigatório/Optativo |
 |-------|--------------|---------------------|
 | 0 | — | Verificação de vaga |
-| 1–6 | (shared stages) | (shared stages) |
+| 1–6 | (etapas compartilhadas) | (etapas compartilhadas) |
 | 7 | Concluído | Concluído |
 
-Stage constants: `ETAPAS_OBS`, `ETAPAS_OBR_OPT`, `ETAPA_COLORS` in `app.py`.
+Constantes de etapa: `ETAPAS_OBS`, `ETAPAS_OBR_OPT`, `ETAPA_COLORS` em `app.py`.
 
 ## Key API Endpoints
 
-All endpoints require login (`@login_required`). Admin-only endpoints check `current_user.role != 'admin'`.
+Todos os endpoints exigem login (`@login_required`). Endpoints admin-only verificam `current_user.role != 'admin'`.
 
-- `GET /api/estagios` — paginated list (15/page); filters: `tipo_id`, `especialidade`, `etapa`, `mes_ano`, `busca`, `status_pagamento`
-- `POST /api/estagios/<id>/avancar` — advances stage, logs to `historico_etapas`, optionally sends email
-- `GET /api/estagios/<id>/pdf` — WeasyPrint PDF of internship record
-- `GET /api/exportar-csv` — CSV/TSV export (same filters as list, `separador` param)
-- `GET /api/dashboard` — aggregate stats for dashboard page
+- `GET /api/me` — dados do usuário logado (`nome`, `role`)
+- `GET /api/estagios` — lista paginada (15/pág); filtros: `tipo_id`, `especialidade`, `etapa`, `mes_ano`, `busca`, `status_pagamento`. Busca abrange: nome, email, crachá, CPF, especialidade, observação. Inclui `dias_na_etapa` calculado.
+- `POST /api/estagios` — cria novo estágio
+- `PUT /api/estagios/<id>` — atualiza estágio
+- `DELETE /api/estagios/<id>` — remove estágio
+- `POST /api/estagios/<id>/avancar` — avança etapa, loga em `historico_etapas`, envia email opcionalmente
+- `GET /api/estagios/<id>/historico` — histórico de etapas
+- `GET /api/estagios/<id>/pdf` — PDF WeasyPrint da ficha
+- `GET /api/exportar-csv` — exportação CSV/TSV (mesmos filtros da lista, param `separador`)
+- `GET /api/dashboard` — stats agregadas para o dashboard
+- `POST /api/importar-excel` — importação de planilha; `confirmar=0` preview, `confirmar=1` grava
+- `GET /api/usuarios` — lista usuários (admin)
+- `POST /api/usuarios` — cria usuário (admin)
+- `PUT /api/usuarios/<id>` — edita usuário (admin)
+- `DELETE /api/usuarios/<id>` — remove usuário (admin)
 
 ## Email Notifications
 
-Disabled by default. Enable via environment variables:
+Desabilitado por padrão. Habilitar via variáveis de ambiente:
 
 ```bash
 SMTP_ENABLED=true SMTP_HOST=smtp.gmail.com SMTP_PORT=587 \
@@ -78,8 +100,16 @@ SMTP_USER=you@gmail.com SMTP_PASS=app-password SMTP_FROM=you@gmail.com \
 python app.py
 ```
 
-Notifications are always recorded in the `notificacoes` table regardless of whether SMTP is enabled.
+Notificações são sempre gravadas na tabela `notificacoes` independente do SMTP estar ativo.
 
 ## CSS Conventions
 
-CSS custom properties defined in `:root` (`--color-primary`, `--color-border`, etc.). Button classes: `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.btn-sm`. Stage badges use `.badge-tipo` combined with type-specific classes. Responsive breakpoint at `max-width: 900px`. Theme (light/dark) stored in `localStorage` as `theme`.
+Custom properties CSS definidas em `:root` (`--color-primary`, `--color-border`, etc.). Classes de botão: `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.btn-sm`. Badges de etapa usam `.badge-tipo` combinado com classes por tipo. Breakpoint responsivo em `max-width: 900px`. Tema (light/dark) salvo em `localStorage` como `theme`.
+
+Modais usam a classe `.open` para exibição (ex: `modal-overlay.open`). A página `usuarios.html` usa `.active` — inconsistência histórica, não alterar sem atualizar o JS correspondente.
+
+## Known Quirks
+
+- SQLite `lower()` não trata acentos (`CLÍNICA` → `clÍnica`). Toda deduplicação case-insensitive com acentos deve usar Python `.lower()`, nunca SQL `lower()`.
+- `cracha` vem como `0` ou `"Devolvido"` em algumas abas da planilha — o parser converte para `NULL`.
+- A aba "2026" da planilha contém múltiplos meses em sequência com linhas de cabeçalho de mês intercaladas; o parser detecta essas linhas por regex.
