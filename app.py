@@ -635,6 +635,8 @@ def api_estagio_certificado(estagio_id):
 @login_required
 def api_marcar_pago(estagio_id):
     db = get_db()
+    if not db.execute('SELECT id FROM estagios WHERE id=?', (estagio_id,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
     db.execute("UPDATE estagios SET status_pagamento='Pago', updated_at=CURRENT_TIMESTAMP WHERE id=?", (estagio_id,))
     db.commit()
     return jsonify({'ok': True})
