@@ -26,6 +26,12 @@ function loadTheme() {
     const t = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', t);
 }
+
+function fmtDate(s) {
+    if (!s) return '-';
+    const d = s.split(/[T ]/)[0].split('-');
+    return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : s;
+}
 function toggleTheme() {
     const cur = document.documentElement.getAttribute('data-theme');
     const next = cur === 'dark' ? 'light' : 'dark';
@@ -168,8 +174,8 @@ async function loadEstagios() {
             <td>${e.cpf || '-'}</td>
             <td>${e.especialidade}</td>
             <td>${e.cracha || '-'}</td>
-            <td>${e.inicio || '-'}</td>
-            <td>${e.termino || '-'}</td>
+            <td>${fmtDate(e.inicio)}</td>
+            <td>${fmtDate(e.termino)}</td>
             <td>${e.valor ? 'R$ ' + Number(e.valor).toFixed(2) : '-'}</td>
             <td><span class="badge" style="${statusBadge}">${e.status_pagamento || 'Interessado'}</span></td>
             <td>
