@@ -46,19 +46,78 @@ function toggleSidebar() {
 
 /* ── User Info ────────────────────────────── */
 async function loadUserInfo() {
- try {
- const r = await fetch('/api/me');
- if (r.ok) {
- const u = await r.json();
- const el = document.getElementById('sidebar-user');
- el.innerHTML = `<strong>${u.nome}</strong><span>${u.role}</span>`;
- // Mostrar link Usuarios so para admin
- const navUsers = document.getElementById('nav-usuarios');
- if (navUsers && u.role === 'admin') navUsers.style.display = '';
- const navVagas = document.getElementById('nav-vagas');
- if (navVagas && u.role === 'admin') navVagas.style.display = '';
- }
- } catch(e) { /* ignore */ }
+    try {
+        const r = await fetch('/api/me');
+        if (r.ok) {
+            const u = await r.json();
+            const el = document.getElementById('sidebar-user');
+            if (el) el.innerHTML = `<strong>${u.nome}</strong><span>${u.role}</span>`;
+            const navUsers = document.getElementById('nav-usuarios');
+            if (navUsers && u.role === 'admin') navUsers.style.display = '';
+            const navVagas = document.getElementById('nav-vagas');
+            if (navVagas && u.role === 'admin') navVagas.style.display = '';
+            await loadWelcomeMessage(u.nome);
+        }
+    } catch(e) { /* ignore */ }
+}
+
+/* ── Welcome Banner ───────────────────────── */
+function saudacao() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Bom dia';
+    if (h < 18) return 'Boa tarde';
+    return 'Boa noite';
+}
+
+async function loadWelcomeMessage(nome) {
+    try {
+        const r = await fetch('/api/pendencias');
+        if (!r.ok) return;
+        const p = await r.json();
+        renderWelcomeMessage(nome, p);
+    } catch(e) { /* ignore */ }
+}
+
+function renderWelcomeMessage(nome, p) {
+    const banner = document.getElementById('welcome-banner');
+    if (!banner) return;
+
+    const chips = [];
+    if (p.em_andamento > 0) {
+        chips.push(`<span class="welcome-chip" style="background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text)" onclick="filtrarPendencia('em_andamento')">📋 ${p.em_andamento} em andamento</span>`);
+    }
+    if (p.criticos > 0) {
+        chips.push(`<span class="welcome-chip" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626" onclick="filtrarPendencia('criticos')">⚠ ${p.criticos} críticos (+14 dias)</span>`);
+    }
+    if (p.alertas > 0) {
+        chips.push(`<span class="welcome-chip" style="background:#fff7ed;border:1px solid #fcd34d;color:#d97706" onclick="filtrarPendencia('alertas')">⚡ ${p.alertas} alertas (7–14 dias)</span>`);
+    }
+    if (p.pag_pendente > 0) {
+        chips.push(`<span class="welcome-chip" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e" onclick="filtrarPendencia('pag_pendente')">R$ ${p.pag_pendente} pagamentos pendentes</span>`);
+    }
+
+    const tudo_ok = chips.length === 0 || (p.criticos === 0 && p.alertas === 0 && p.pag_pendente === 0);
+    const extra = tudo_ok && p.em_andamento > 0 ? ' Tudo em dia!' : '';
+
+    banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;">
+            <span style="font-weight:600;color:var(--color-text);white-space:nowrap;">${saudacao()}, ${nome}!${extra}</span>
+            ${chips.join('')}
+        </div>`;
+}
+
+function filtrarPendencia(tipo) {
+    if (tipo === 'pag_pendente') {
+        document.getElementById('filtro-status-pag').value = 'Pendente';
+        currentPage = 1;
+        loadEstagios();
+        document.querySelector('.table-container').scrollIntoView({behavior:'smooth'});
+    } else {
+        document.querySelector('.table-container').scrollIntoView({behavior:'smooth'});
+        if (tipo === 'criticos') showToast('⚠ Estágios críticos estão destacados em vermelho na coluna Etapa (mais de 14 dias sem atualização)', false);
+        if (tipo === 'alertas') showToast('⚡ Estágios em alerta estão com badge amarelo na coluna Etapa (7–14 dias sem atualização)', false);
+        if (tipo === 'em_andamento') { currentPage = 1; loadEstagios(); }
+    }
 }
 
 /* ── Dropdowns ────────────────────────────── */

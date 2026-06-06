@@ -683,6 +683,36 @@ def api_dashboard():
     })
 
 
+# ── API: Pendencias ──────────────────────────────────────────
+@app.route('/api/pendencias', methods=['GET'])
+@login_required
+def api_pendencias():
+    db = get_db()
+    rows = db.execute('''
+        SELECT
+            COUNT(*) FILTER (WHERE etapa < 7)                                  AS em_andamento,
+            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 14)                    AS criticos,
+            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 7 AND dias <= 14)      AS alertas,
+            COUNT(*) FILTER (WHERE status_pagamento = "Pendente" AND etapa < 7) AS pag_pendente
+        FROM (
+            SELECT e.etapa, e.status_pagamento,
+                CAST(julianday("now") - julianday(
+                    COALESCE(
+                        (SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id = e.id),
+                        e.updated_at, e.created_at
+                    )
+                ) AS INTEGER) AS dias
+            FROM estagios e
+        )
+    ''').fetchone()
+    return jsonify({
+        'em_andamento': rows['em_andamento'] or 0,
+        'criticos':     rows['criticos']     or 0,
+        'alertas':      rows['alertas']      or 0,
+        'pag_pendente': rows['pag_pendente'] or 0,
+    })
+
+
 # ── API: CSV Export ───────────────────────────────────────────
 @app.route('/api/exportar-csv', methods=['GET'])
 @login_required
