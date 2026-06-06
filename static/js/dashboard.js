@@ -13,6 +13,8 @@ async function loadUserInfo() {
         if (d.role === 'admin') {
             const nav = document.getElementById('nav-usuarios');
             if (nav) nav.style.display = '';
+            const navVagas = document.getElementById('nav-vagas');
+            if (navVagas) navVagas.style.display = '';
         }
     } catch(e) {}
 }

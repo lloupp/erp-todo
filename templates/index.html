@@ -18,6 +18,7 @@
                 <a href="/" class="nav-link active">Estagios</a>
                 <a href="/dashboard" class="nav-link">Dashboard</a>
                 <a href="/usuarios" class="nav-link" id="nav-usuarios" style="display:none;">Usuarios</a>
+                <a href="/vagas" class="nav-link" id="nav-vagas" style="display:none;">Vagas</a>
             </div>
             <div class="sidebar-user" id="sidebar-user">
                 <strong>Carregando...</strong>
@@ -67,6 +68,17 @@
                 <select id="filtro-mes"><option value="">Todos</option></select>
             </div>
             <div class="filter-group">
+                <label>Semana</label>
+                <select id="filtro-semana">
+                    <option value="">Todas</option>
+                    <option value="1">Semana 1</option>
+                    <option value="2">Semana 2</option>
+                    <option value="3">Semana 3</option>
+                    <option value="4">Semana 4</option>
+                    <option value="5">Semana 5</option>
+                </select>
+            </div>
+            <div class="filter-group">
                 <label>Status Pagto</label>
                 <select id="filtro-status-pag">
                     <option value="">Todos</option>
@@ -81,6 +93,9 @@
                 <button class="btn btn-sm" onclick="limparFiltros()">Limpar</button>
             </div>
         </div>
+
+        <!-- Painel ocupacao semanal -->
+        <div id="painel-ocupacao" style="display:none;margin:0 24px 16px;padding:14px 18px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;"></div>
 
         <!-- Table -->
         <div class="table-container">

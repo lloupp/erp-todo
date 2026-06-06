@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Usuarios - Estagios Medicos</title>
+    <title>Vagas por Especialidade - Estagios Medicos</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -17,8 +17,8 @@
             <div class="sidebar-nav">
                 <a href="/" class="nav-link">Estagios</a>
                 <a href="/dashboard" class="nav-link">Dashboard</a>
-                <a href="/usuarios" class="nav-link active">Usuarios</a>
-                <a href="/vagas" class="nav-link">Vagas</a>
+                <a href="/usuarios" class="nav-link">Usuarios</a>
+                <a href="/vagas" class="nav-link active">Vagas</a>
             </div>
             <div class="sidebar-user" id="sidebar-user">
                 <strong>Carregando...</strong>
@@ -34,63 +34,53 @@
     <main class="main-content">
         <div class="topbar">
             <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
-            <h2>Usuarios</h2>
+            <h2>Vagas por Especialidade</h2>
             <div class="topbar-right">
-                <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo Usuario</button>
+                <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Nova Especialidade</button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
             </div>
+        </div>
+
+        <div style="padding:0 24px 12px;color:var(--color-text-secondary);font-size:13px;">
+            Defina o numero maximo de estagiarios por semana em cada especialidade. Este limite e usado como referencia ao cadastrar novos estagios.
         </div>
 
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Username</th>
-                        <th>Nome</th>
-                        <th>Papel</th>
-                        <th>Ultimo Login</th>
-                        <th>Acoes</th>
+                        <th>Especialidade</th>
+                        <th style="width:180px;">Limite semanal (vagas/sem)</th>
+                        <th style="width:140px;">Acoes</th>
                     </tr>
                 </thead>
-                <tbody id="tabela-usuarios"></tbody>
+                <tbody id="tabela-limites"></tbody>
             </table>
-            <div id="empty-state" class="empty-state" style="display:none;">Nenhum usuario cadastrado.</div>
+            <div id="empty-state" class="empty-state" style="display:none;">Nenhuma especialidade cadastrada.</div>
         </div>
     </main>
 
-    <!-- Modal: Novo/Editar Usuario -->
-    <div class="modal-overlay" id="modal-usuario">
+    <!-- Modal: Novo/Editar -->
+    <div class="modal-overlay" id="modal-limite">
         <div class="modal" style="max-width:420px;">
             <div class="modal-header">
-                <h3 id="modal-titulo">Novo Usuario</h3>
-                <button class="btn-icon" onclick="fecharModal('modal-usuario')">&times;</button>
+                <h3 id="modal-titulo">Nova Especialidade</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-limite')">&times;</button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit-id">
                 <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="inp-username" placeholder="login do usuario">
+                    <label>Especialidade</label>
+                    <input type="text" id="inp-especialidade" placeholder="Ex: Cardiologia">
                 </div>
                 <div class="form-group">
-                    <label>Nome Completo</label>
-                    <input type="text" id="inp-nome" placeholder="Nome do usuario">
-                </div>
-                <div class="form-group">
-                    <label>Senha <span id="senha-hint" style="font-weight:normal;color:var(--color-text-secondary)">(deixe vazio para manter a atual)</span></label>
-                    <input type="password" id="inp-senha" placeholder="Senha">
-                </div>
-                <div class="form-group">
-                    <label>Papel</label>
-                    <select id="inp-role">
-                        <option value="user">Usuario</option>
-                        <option value="admin">Administrador</option>
-                    </select>
+                    <label>Limite semanal (vagas por semana)</label>
+                    <input type="number" id="inp-limite" min="1" max="99" value="1">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="fecharModal('modal-usuario')">Cancelar</button>
-                <button class="btn btn-primary" onclick="salvarUsuario()">Salvar</button>
+                <button class="btn" onclick="fecharModal('modal-limite')">Cancelar</button>
+                <button class="btn btn-primary" onclick="salvarLimite()">Salvar</button>
             </div>
         </div>
     </div>
@@ -103,7 +93,7 @@
                 <button class="btn-icon" onclick="fecharModal('modal-confirmar')">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="msg-confirmar">Deseja realmente excluir este usuario?</p>
+                <p id="msg-confirmar">Deseja realmente excluir esta especialidade?</p>
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="fecharModal('modal-confirmar')">Cancelar</button>
@@ -113,9 +103,9 @@
     </div>
 
     <script>
-        const API = '/api/usuarios';
+        const API = '/api/limites';
 
-        // ── Layout helpers ──────────────────────────────────────────────
+        // ── Layout ──────────────────────────────────────────────────────
         function loadTheme() {
             document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
         }
@@ -140,10 +130,7 @@
         function abrirModal(id) { document.getElementById(id).classList.add('open'); }
         function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
         document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') {
-                fecharModal('modal-usuario');
-                fecharModal('modal-confirmar');
-            }
+            if (e.key === 'Escape') { fecharModal('modal-limite'); fecharModal('modal-confirmar'); }
         });
 
         // ── Toast ───────────────────────────────────────────────────────
@@ -165,27 +152,30 @@
         function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
         // ── Carregar lista ──────────────────────────────────────────────
-        async function carregarUsuarios() {
+        async function carregarLimites() {
             const r = await fetch(API);
-            const users = await r.json();
-            const tbody = document.getElementById('tabela-usuarios');
+            if (!r.ok) { showToast('Erro ao carregar', true); return; }
+            const limites = await r.json();
+            const tbody = document.getElementById('tabela-limites');
             const empty = document.getElementById('empty-state');
-            if (!users.length) {
+            if (!limites.length) {
                 tbody.innerHTML = '';
                 empty.style.display = 'block';
                 return;
             }
             empty.style.display = 'none';
-            tbody.innerHTML = users.map(u => `
+            tbody.innerHTML = limites.map(l => `
                 <tr>
-                    <td>${u.id}</td>
-                    <td>${esc(u.username)}</td>
-                    <td>${esc(u.nome)}</td>
-                    <td><span class="badge ${u.role === 'admin' ? 'badge-obs' : 'badge-obr'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
-                    <td style="font-size:.82rem;color:var(--color-text-secondary)">${u.last_login || '—'}</td>
+                    <td><strong>${esc(l.especialidade)}</strong></td>
                     <td>
-                        <button class="btn btn-sm" onclick="editarUsuario(${u.id},'${esc(u.username)}','${esc(u.nome)}','${u.role}')">Editar</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarExcluir(${u.id},'${esc(u.nome)}')" style="margin-left:4px;">Excluir</button>
+                        <span style="display:inline-flex;align-items:center;gap:8px;">
+                            <span style="font-size:1.1rem;font-weight:600;color:var(--color-primary)">${l.limite_semanal}</span>
+                            <span style="font-size:12px;color:var(--color-text-secondary)">vagas/semana</span>
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm" onclick="editarLimite(${l.id},'${esc(l.especialidade)}',${l.limite_semanal})">Editar</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarExcluir(${l.id},'${esc(l.especialidade)}')" style="margin-left:4px;">Excluir</button>
                     </td>
                 </tr>
             `).join('');
@@ -193,60 +183,49 @@
 
         // ── Novo / Editar ───────────────────────────────────────────────
         function abrirModalNovo() {
-            document.getElementById('modal-titulo').textContent = 'Novo Usuario';
+            document.getElementById('modal-titulo').textContent = 'Nova Especialidade';
             document.getElementById('edit-id').value = '';
-            document.getElementById('inp-username').value = '';
-            document.getElementById('inp-nome').value = '';
-            document.getElementById('inp-senha').value = '';
-            document.getElementById('inp-role').value = 'user';
-            document.getElementById('senha-hint').style.display = 'none';
-            document.getElementById('inp-senha').placeholder = 'Senha';
-            abrirModal('modal-usuario');
+            document.getElementById('inp-especialidade').value = '';
+            document.getElementById('inp-limite').value = '1';
+            document.getElementById('inp-especialidade').disabled = false;
+            abrirModal('modal-limite');
         }
 
-        function editarUsuario(id, username, nome, role) {
-            document.getElementById('modal-titulo').textContent = 'Editar Usuario';
+        function editarLimite(id, especialidade, limite) {
+            document.getElementById('modal-titulo').textContent = 'Editar Limite';
             document.getElementById('edit-id').value = id;
-            document.getElementById('inp-username').value = username;
-            document.getElementById('inp-nome').value = nome;
-            document.getElementById('inp-senha').value = '';
-            document.getElementById('inp-role').value = role;
-            document.getElementById('senha-hint').style.display = 'inline';
-            document.getElementById('inp-senha').placeholder = 'Nova senha (opcional)';
-            abrirModal('modal-usuario');
+            document.getElementById('inp-especialidade').value = especialidade;
+            document.getElementById('inp-limite').value = limite;
+            document.getElementById('inp-especialidade').disabled = false;
+            abrirModal('modal-limite');
         }
 
-        async function salvarUsuario() {
+        async function salvarLimite() {
             const id = document.getElementById('edit-id').value;
-            const username = document.getElementById('inp-username').value.trim();
-            const nome = document.getElementById('inp-nome').value.trim();
-            const senha = document.getElementById('inp-senha').value;
-            const role = document.getElementById('inp-role').value;
+            const especialidade = document.getElementById('inp-especialidade').value.trim();
+            const limite = parseInt(document.getElementById('inp-limite').value);
 
-            if (!username || !nome) { showToast('Preencha username e nome', true); return; }
-            if (!id && !senha) { showToast('Senha obrigatoria para novo usuario', true); return; }
-
-            const body = { username, nome, role };
-            if (senha) body.senha = senha;
+            if (!especialidade) { showToast('Preencha a especialidade', true); return; }
+            if (!limite || limite < 1) { showToast('Limite deve ser maior que zero', true); return; }
 
             const r = await fetch(id ? `${API}/${id}` : API, {
                 method: id ? 'PUT' : 'POST',
                 headers: {'Content-Type':'application/json'},
-                body: JSON.stringify(body)
+                body: JSON.stringify({ especialidade, limite_semanal: limite })
             });
             const data = await r.json();
             if (!r.ok) { showToast(data.erro || 'Erro ao salvar', true); return; }
 
-            fecharModal('modal-usuario');
-            carregarUsuarios();
-            showToast(id ? 'Usuario atualizado!' : 'Usuario criado!');
+            fecharModal('modal-limite');
+            carregarLimites();
+            showToast(id ? 'Limite atualizado!' : 'Especialidade cadastrada!');
         }
 
         // ── Excluir ─────────────────────────────────────────────────────
         let excluirId = null;
         function confirmarExcluir(id, nome) {
             excluirId = id;
-            document.getElementById('msg-confirmar').textContent = `Excluir usuario "${nome}"?`;
+            document.getElementById('msg-confirmar').textContent = `Excluir limite da especialidade "${nome}"?`;
             abrirModal('modal-confirmar');
         }
         document.getElementById('btn-confirmar-excluir').onclick = async () => {
@@ -254,7 +233,7 @@
             const r = await fetch(`${API}/${excluirId}`, { method: 'DELETE' });
             const data = await r.json();
             if (!r.ok) { showToast(data.erro || 'Erro ao excluir', true); }
-            else { showToast('Usuario excluido!'); carregarUsuarios(); }
+            else { showToast('Especialidade removida!'); carregarLimites(); }
             fecharModal('modal-confirmar');
             excluirId = null;
         };
@@ -262,7 +241,7 @@
         // ── Init ────────────────────────────────────────────────────────
         loadTheme();
         loadUserInfo();
-        carregarUsuarios();
+        carregarLimites();
     </script>
 </body>
 </html>

@@ -209,6 +209,12 @@ def init_db():
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS limite_especialidade (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            especialidade TEXT UNIQUE NOT NULL COLLATE NOCASE,
+            limite_semanal INTEGER NOT NULL DEFAULT 1
+        );
+
         DELETE FROM historico_etapas;
         DELETE FROM notificacoes;
         DELETE FROM estagios;
@@ -354,6 +360,11 @@ def api_get_estagios():
     if status_pag:
         query += ' AND e.status_pagamento = ?'
         params.append(status_pag)
+
+    semana = request.args.get('semana')
+    if semana:
+        query += ' AND e.semana = ?'
+        params.append(int(semana))
 
     # Count total for pagination
     count_query = query.replace('SELECT e.*, t.nome as tipo_nome', 'SELECT COUNT(*)')
@@ -1118,6 +1129,106 @@ def api_excluir_usuario(user_id):
     return jsonify({'ok': True})
 
 
+# ── Admin: Vagas (limites por especialidade) ─────────────────
+@app.route('/vagas')
+@login_required
+def pagina_vagas():
+    if current_user.role != 'admin':
+        return redirect(url_for('index'))
+    return render_template('vagas.html')
+
+
+@app.route('/api/limites', methods=['GET'])
+@login_required
+def api_listar_limites():
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    rows = db.execute('SELECT id, especialidade, limite_semanal FROM limite_especialidade ORDER BY especialidade COLLATE NOCASE').fetchall()
+    return jsonify([{'id': r['id'], 'especialidade': r['especialidade'], 'limite_semanal': r['limite_semanal']} for r in rows])
+
+
+@app.route('/api/limites', methods=['POST'])
+@login_required
+def api_criar_limite():
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    data = request.get_json()
+    especialidade = (data.get('especialidade') or '').strip()
+    limite = data.get('limite_semanal')
+    if not especialidade or limite is None:
+        return jsonify({'erro': 'Preencha especialidade e limite'}), 400
+    try:
+        db.execute('INSERT INTO limite_especialidade (especialidade, limite_semanal) VALUES (?,?)', (especialidade, int(limite)))
+        db.commit()
+        row_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+        return jsonify({'id': row_id, 'especialidade': especialidade, 'limite_semanal': int(limite)}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({'erro': 'Especialidade ja cadastrada'}), 409
+
+
+@app.route('/api/limites/<int:limite_id>', methods=['PUT'])
+@login_required
+def api_editar_limite(limite_id):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    data = request.get_json()
+    row = db.execute('SELECT * FROM limite_especialidade WHERE id=?', (limite_id,)).fetchone()
+    if not row:
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    especialidade = (data.get('especialidade') or row['especialidade']).strip()
+    limite = int(data.get('limite_semanal', row['limite_semanal']))
+    try:
+        db.execute('UPDATE limite_especialidade SET especialidade=?, limite_semanal=? WHERE id=?', (especialidade, limite, limite_id))
+        db.commit()
+        return jsonify({'id': limite_id, 'especialidade': especialidade, 'limite_semanal': limite})
+    except sqlite3.IntegrityError:
+        return jsonify({'erro': 'Especialidade ja cadastrada'}), 409
+
+
+@app.route('/api/limites/<int:limite_id>', methods=['DELETE'])
+@login_required
+def api_excluir_limite(limite_id):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    if not db.execute('SELECT id FROM limite_especialidade WHERE id=?', (limite_id,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    db.execute('DELETE FROM limite_especialidade WHERE id=?', (limite_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/vagas-semana', methods=['GET'])
+@login_required
+def api_vagas_semana():
+    mes_ano = request.args.get('mes_ano', '')
+    semana = request.args.get('semana', '')
+    if not mes_ano or not semana:
+        return jsonify({'erro': 'mes_ano e semana obrigatorios'}), 400
+    db = get_db()
+    rows = db.execute('''
+        SELECT l.id, l.especialidade, l.limite_semanal,
+               COALESCE(c.usadas, 0) as usadas
+        FROM limite_especialidade l
+        LEFT JOIN (
+            SELECT especialidade, COUNT(*) as usadas
+            FROM estagios
+            WHERE mes_ano=? AND semana=?
+            GROUP BY especialidade
+        ) c ON lower(l.especialidade) = lower(c.especialidade)
+        ORDER BY l.especialidade COLLATE NOCASE
+    ''', (mes_ano, int(semana))).fetchall()
+    return jsonify([{
+        'especialidade': r['especialidade'],
+        'limite': r['limite_semanal'],
+        'usadas': r['usadas'],
+        'livres': max(0, r['limite_semanal'] - r['usadas']),
+    } for r in rows])
+
+
 # ── Run ───────────────────────────────────────────────────────
 if __name__ == '__main__':
     if not os.path.exists(DB_PATH):
@@ -1163,6 +1274,24 @@ if __name__ == '__main__':
             enviado INTEGER DEFAULT 0,
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS limite_especialidade (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            especialidade TEXT UNIQUE NOT NULL COLLATE NOCASE,
+            limite_semanal INTEGER NOT NULL DEFAULT 1
+        )''')
+        # Seed limites if table is empty
+        if db.execute('SELECT COUNT(*) FROM limite_especialidade').fetchone()[0] == 0:
+            limites_seed = [
+                ('Anestesiologia', 4), ('Cardiologia', 4), ('Cirurgia cardiovascular', 2),
+                ('Cirurgia de aparelho digestivo', 3), ('Cirurgia de cabeca e pescoco', 3),
+                ('Cirurgia geral', 8), ('Cirurgia oncologica', 3), ('Cirurgia pediatrica', 4),
+                ('Cirurgia plastica', 3), ('Cirurgia toracica', 2), ('Clinica medica', 8),
+                ('Emergencia adulta', 8), ('Emergencia cardiologica', 3), ('Gastroenterologia', 2),
+                ('Geriatria', 3), ('Mastologia', 3), ('Neurologia pediatrica', 2),
+                ('Neurocirurgia', 4), ('Oncologia clinica', 4), ('Otorrino', 2),
+                ('Terapia intensiva', 2),
+            ]
+            db.executemany('INSERT OR IGNORE INTO limite_especialidade (especialidade, limite_semanal) VALUES (?,?)', limites_seed)
         # Seed default admin if no users exist
         user_count = db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0]
         if user_count == 0:

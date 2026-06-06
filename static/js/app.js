@@ -49,6 +49,8 @@ async function loadUserInfo() {
  // Mostrar link Usuarios so para admin
  const navUsers = document.getElementById('nav-usuarios');
  if (navUsers && u.role === 'admin') navUsers.style.display = '';
+ const navVagas = document.getElementById('nav-vagas');
+ if (navVagas && u.role === 'admin') navVagas.style.display = '';
  }
  } catch(e) { /* ignore */ }
 }
@@ -85,11 +87,13 @@ async function loadFiltros() {
 
 /* ── Filters ──────────────────────────────── */
 function bindFilterEvents() {
-    ['filtro-busca','filtro-tipo','filtro-especialidade','filtro-mes','filtro-status-pag'].forEach(id => {
+    ['filtro-busca','filtro-tipo','filtro-especialidade','filtro-mes','filtro-semana','filtro-status-pag'].forEach(id => {
         const el = document.getElementById(id);
+        if (!el) return;
         el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => {
             currentPage = 1;
             loadEstagios();
+            carregarOcupacaoSemana();
         });
     });
 }
@@ -99,9 +103,12 @@ function limparFiltros() {
     document.getElementById('filtro-tipo').value = '';
     document.getElementById('filtro-especialidade').value = '';
     document.getElementById('filtro-mes').value = '';
+    const filSem = document.getElementById('filtro-semana');
+    if (filSem) filSem.value = '';
     document.getElementById('filtro-status-pag').value = '';
     currentPage = 1;
     loadEstagios();
+    carregarOcupacaoSemana();
 }
 
 function getFilterParams() {
@@ -113,6 +120,8 @@ function getFilterParams() {
     if (v('filtro-tipo')) p.set('tipo_id', v('filtro-tipo'));
     if (v('filtro-especialidade')) p.set('especialidade', v('filtro-especialidade'));
     if (v('filtro-mes')) p.set('mes_ano', v('filtro-mes'));
+    const semEl = document.getElementById('filtro-semana');
+    if (semEl && semEl.value) p.set('semana', semEl.value);
     if (v('filtro-status-pag')) p.set('status_pagamento', v('filtro-status-pag'));
     return p;
 }
@@ -295,6 +304,23 @@ async function salvarEstagio() {
         return;
     }
 
+    // Verificar limite de vagas (apenas para novos registros)
+    if (!id && body.mes_ano && body.semana) {
+        try {
+            const rv = await fetch(`/api/vagas-semana?mes_ano=${encodeURIComponent(body.mes_ano)}&semana=${encodeURIComponent(body.semana)}`);
+            if (rv.ok) {
+                const vagas = await rv.json();
+                const vaga = vagas.find(v => v.especialidade.toLowerCase() === body.especialidade.toLowerCase());
+                if (vaga && vaga.usadas >= vaga.limite) {
+                    const continuar = confirm(
+                        `⚠ Limite atingido: ${vaga.especialidade} ja tem ${vaga.usadas}/${vaga.limite} vagas nesta semana.\n\nDeseja incluir mesmo assim?`
+                    );
+                    if (!continuar) return;
+                }
+            }
+        } catch(e) { /* ignora erro de rede */ }
+    }
+
     let r;
     if (id) {
         r = await fetch(`/api/estagios/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -445,6 +471,40 @@ async function analisarXlsx() {
 
     preview.innerHTML = html;
     if (data.novos > 0) btnConfirm.style.display = '';
+}
+
+/* ── Ocupacao semanal ─────────────────────── */
+async function carregarOcupacaoSemana() {
+    const mesAno = document.getElementById('filtro-mes').value;
+    const semana = document.getElementById('filtro-semana') ? document.getElementById('filtro-semana').value : '';
+    const painel = document.getElementById('painel-ocupacao');
+    if (!painel) return;
+
+    if (!mesAno || !semana) {
+        painel.innerHTML = '';
+        painel.style.display = 'none';
+        return;
+    }
+
+    const r = await fetch(`/api/vagas-semana?mes_ano=${encodeURIComponent(mesAno)}&semana=${encodeURIComponent(semana)}`);
+    if (!r.ok) return;
+    const dados = await r.json();
+    if (!dados.length) { painel.style.display = 'none'; return; }
+
+    const linhas = dados.map(d => {
+        const pct = Math.min(100, Math.round(d.usadas / d.limite * 100));
+        const cor = d.usadas >= d.limite ? '#dc2626' : d.usadas >= d.limite * 0.75 ? '#f59e0b' : '#10b981';
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="width:200px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${d.especialidade}">${d.especialidade}</span>
+            <div style="flex:1;background:var(--color-border);border-radius:4px;height:8px;overflow:hidden;">
+                <div style="width:${pct}%;background:${cor};height:100%;border-radius:4px;transition:width .3s;"></div>
+            </div>
+            <span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap;">${d.usadas}/${d.limite}</span>
+        </div>`;
+    }).join('');
+
+    painel.style.display = 'block';
+    painel.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">Ocupacao — Semana ${semana} de ${mesAno}</div>${linhas}`;
 }
 
 async function confirmarImport() {
