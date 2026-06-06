@@ -843,6 +843,7 @@ def _parse_aba_xlsx(ws, mes_ano_fixo, ano):
     records = []
     col_map = {}
     semana = 1
+    semana_from_date = False
     current_mes_ano = mes_ano_fixo
 
     for row in ws.iter_rows(values_only=True):
@@ -863,12 +864,28 @@ def _parse_aba_xlsx(ws, mes_ano_fixo, ano):
                 current_mes_ano = f'{ano}-{mes_num:02d}'
                 col_map = {}
                 semana = 1
+                semana_from_date = False
                 continue
 
-            # Linha de cabeçalho de semana: "Semana 1 | Nome | ..."
+            # Linha de cabeçalho de semana com número: "Semana 1 | Nome | ..."
             m = re.match(r'semana\s*(\d+)', col0l)
             if m:
                 semana = int(m.group(1))
+                semana_from_date = False
+                new_map = {}
+                for j, cell in enumerate(row):
+                    if j == 0 or cell is None:
+                        continue
+                    key = str(cell).strip().lower()
+                    if key in _COL_IMPORT:
+                        new_map[j] = _COL_IMPORT[key]
+                if new_map:
+                    col_map = new_map
+                continue
+
+            # "Semana " sem número (aba 2026, meses a partir de Março)
+            if re.match(r'^semana\s*$', col0l):
+                semana_from_date = True
                 new_map = {}
                 for j, cell in enumerate(row):
                     if j == 0 or cell is None:
@@ -884,6 +901,10 @@ def _parse_aba_xlsx(ws, mes_ano_fixo, ano):
         # Linha de dados: col0 deve ser uma data
         if not hasattr(col0, 'strftime') or not col_map:
             continue
+
+        # Inferir semana a partir do dia quando header não traz número
+        if semana_from_date:
+            semana = (col0.day - 1) // 7 + 1
 
         # Extrair nome
         nome = None
@@ -950,6 +971,9 @@ def api_importar_excel():
         return jsonify({'erro': 'Arquivo deve ser .xlsx ou .xls'}), 400
 
     confirmar = request.args.get('confirmar', '0') == '1'
+    # Filtro de abas: lista de nomes selecionados pelo usuário (case-insensitive)
+    abas_selecionadas = request.form.getlist('abas') or []
+    abas_selecionadas_lower = {a.strip().lower() for a in abas_selecionadas}
 
     try:
         import openpyxl
@@ -957,21 +981,31 @@ def api_importar_excel():
     except Exception as e:
         return jsonify({'erro': f'Erro ao ler arquivo: {e}'}), 400
 
+    # Listar abas válidas (não ignoradas) para retornar no preview
+    abas_validas = []
+    for sn in wb.sheetnames:
+        nl = sn.strip().lower()
+        if nl in _ABAS_IGNORAR:
+            continue
+        if nl == '2026':
+            abas_validas.append(sn)
+        else:
+            parts = re.split(r'[-/]', nl)
+            if len(parts) >= 2 and parts[0].strip() in _MESES_PT:
+                abas_validas.append(sn)
+
     all_records = []
-    for sheet_name in wb.sheetnames:
+    for sheet_name in abas_validas:
         name_lower = sheet_name.strip().lower()
-        if name_lower in _ABAS_IGNORAR:
+        # Aplicar filtro de seleção (se houver)
+        if abas_selecionadas_lower and name_lower not in abas_selecionadas_lower:
             continue
 
         if name_lower == '2026':
             ano, mes_ano_fixo = 2026, None
         else:
             parts = re.split(r'[-/]', name_lower)
-            if len(parts) < 2:
-                continue
             mes_nome = parts[0].strip()
-            if mes_nome not in _MESES_PT:
-                continue
             ano_str = parts[-1].strip()
             try:
                 ano = int(ano_str) if len(ano_str) == 4 else 2000 + int(ano_str)
@@ -1004,6 +1038,7 @@ def api_importar_excel():
             'novos': len(novos),
             'duplicados': len(duplicados),
             'preview': novos[:30],
+            'abas_disponiveis': abas_validas,
         })
 
     responsavel = current_user.nome if current_user.is_authenticated else 'Importacao'

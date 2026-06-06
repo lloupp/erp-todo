@@ -434,7 +434,24 @@ async function analisarXlsx() {
     const data = await r.json();
     if (data.erro) { preview.innerHTML = `<p style="color:#dc2626">${data.erro}</p>`; return; }
 
-    let html = `<div style="margin-bottom:12px;padding:12px;background:var(--color-surface-hover);border-radius:6px;font-size:13px;">
+    // Seletor de abas
+    let abaHtml = '';
+    if (data.abas_disponiveis && data.abas_disponiveis.length > 1) {
+        abaHtml = `<div style="margin-bottom:12px;padding:12px;background:var(--color-surface-hover);border-radius:6px;font-size:13px;">
+            <div style="font-weight:600;margin-bottom:8px;">Abas a importar:</div>
+            <div id="abas-check" style="display:flex;flex-wrap:wrap;gap:6px;">
+            ${data.abas_disponiveis.map(a => `
+                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;border:1px solid var(--color-border);border-radius:4px;font-size:12px;background:var(--color-bg);">
+                    <input type="checkbox" name="aba" value="${a}" checked style="cursor:pointer;"> ${a}
+                </label>`).join('')}
+            </div>
+            <button class="btn btn-sm" onclick="reaplicarFiltroAbas()" style="margin-top:8px;">Reanalisar seleção</button>
+        </div>`;
+    } else if (data.abas_disponiveis && data.abas_disponiveis.length === 1) {
+        abaHtml = `<input type="hidden" name="aba" value="${data.abas_disponiveis[0]}" id="aba-unica">`;
+    }
+
+    let html = `${abaHtml}<div style="margin-bottom:12px;padding:12px;background:var(--color-surface-hover);border-radius:6px;font-size:13px;">
         <strong>${data.novos}</strong> novos &bull;
         <strong style="color:var(--color-text-muted)">${data.duplicados}</strong> ja existentes &bull;
         <strong>${data.total_planilha}</strong> total na planilha
@@ -507,12 +524,35 @@ async function carregarOcupacaoSemana() {
     painel.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">Ocupacao — Semana ${semana} de ${mesAno}</div>${linhas}`;
 }
 
+function _abasSelecionadas() {
+    const checks = document.querySelectorAll('#abas-check input[type=checkbox]:checked');
+    return checks.length > 0 ? [...checks].map(c => c.value) : [];
+}
+
+async function reaplicarFiltroAbas() {
+    const file = document.getElementById('import-file').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('arquivo', file);
+    _abasSelecionadas().forEach(a => form.append('abas', a));
+    const preview = document.getElementById('import-preview');
+    const btnConfirm = document.getElementById('btn-import-confirm');
+    const stats = preview.querySelector('div:last-child');
+    // Reanalisar apenas as estatísticas sem mudar o seletor de abas
+    const r = await fetch('/api/importar-excel?confirmar=0', { method: 'POST', body: form });
+    const data = await r.json();
+    if (data.erro) { return; }
+    if (stats) stats.innerHTML = `<strong>${data.novos}</strong> novos &bull; <strong style="color:var(--color-text-muted)">${data.duplicados}</strong> ja existentes &bull; <strong>${data.total_planilha}</strong> total nas abas selecionadas`;
+    btnConfirm.style.display = data.novos > 0 ? '' : 'none';
+}
+
 async function confirmarImport() {
     const file = document.getElementById('import-file').files[0];
     if (!file) return;
 
     const form = new FormData();
     form.append('arquivo', file);
+    _abasSelecionadas().forEach(a => form.append('abas', a));
 
     const btn = document.getElementById('btn-import-confirm');
     btn.disabled = true;
