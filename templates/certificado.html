@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Times New Roman', Times, serif;
+    background: #fff;
+    color: #222;
+  }
+
+  /* ── Moldura externa ── */
+  .frame {
+    margin: 18mm 15mm 15mm 15mm;
+    border: 2px solid #003087;
+    min-height: 257mm;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header azul com onda ── */
+  .header {
+    background: #003087;
+    position: relative;
+    padding: 18px 28px 48px 28px;
+    overflow: hidden;
+  }
+  .header-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .logo-icon {
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+  }
+  .logo-text {
+    color: #fff;
+    line-height: 1.3;
+  }
+  .logo-text .bold {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    font-family: Arial, sans-serif;
+  }
+  .logo-text .sub {
+    font-size: 9px;
+    letter-spacing: 2px;
+    font-family: Arial, sans-serif;
+    opacity: .85;
+  }
+  /* Onda inferior do header */
+  .wave {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  /* ── Corpo ── */
+  .body {
+    flex: 1;
+    padding: 32px 40px 28px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .inst-name {
+    text-align: center;
+    font-family: Arial, sans-serif;
+    margin-bottom: 4px;
+  }
+  .inst-name p:first-child {
+    font-size: 13px;
+    color: #333;
+  }
+  .inst-name p:last-child {
+    font-size: 13px;
+    font-weight: 700;
+    color: #222;
+    letter-spacing: .5px;
+  }
+
+  .title {
+    font-family: Arial, sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    color: #003087;
+    letter-spacing: 3px;
+    margin: 28px 0 32px 0;
+    text-align: center;
+  }
+
+  .cert-text {
+    font-size: 14.5px;
+    line-height: 2;
+    text-align: center;
+    max-width: 480px;
+    color: #222;
+  }
+  .cert-text strong {
+    font-weight: 700;
+  }
+
+  .date-line {
+    margin-top: 44px;
+    text-align: right;
+    width: 100%;
+    font-size: 13px;
+    color: #333;
+  }
+
+  /* ── Assinaturas ── */
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 52px;
+    width: 100%;
+    gap: 32px;
+  }
+  .sig-block {
+    flex: 1;
+    text-align: center;
+  }
+  .sig-line {
+    border-top: 1px solid #333;
+    margin-bottom: 6px;
+    width: 80%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .sig-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #222;
+  }
+  .sig-role {
+    font-size: 11px;
+    color: #555;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-inner">
+      <!-- Cruz SVG simples -->
+      <svg class="logo-icon" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="20" y="4" width="16" height="48" rx="3" fill="white"/>
+        <rect x="4" y="20" width="48" height="16" rx="3" fill="white"/>
+      </svg>
+      <div class="logo-text">
+        <div class="bold">ENSINO E PESQUISA</div>
+        <div class="sub">SANTA CASA DE PORTO ALEGRE</div>
+      </div>
+    </div>
+    <!-- Onda SVG -->
+    <svg class="wave" viewBox="0 0 595 50" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M0,50 L0,20 Q148,55 297,20 Q446,-15 595,20 L595,50 Z" fill="white"/>
+    </svg>
+  </div>
+
+  <!-- Corpo -->
+  <div class="body">
+    <div class="inst-name">
+      <p>Santa Casa de Porto Alegre</p>
+      <p>ENSINO E PESQUISA</p>
+    </div>
+
+    <div class="title">CERTIFICADO</div>
+
+    <p class="cert-text">
+      Certificamos que <strong>{{ estagio.nome }}</strong> realizou
+      {% if estagio.tipo_id == 1 %}
+        <strong>OBSERVERSHIP - Experiência Médica</strong>
+      {% elif estagio.tipo_id == 2 %}
+        <strong>Estágio Obrigatório</strong>
+      {% else %}
+        <strong>Estágio Optativo</strong>
+      {% endif %}
+      na especialidade de <strong>{{ estagio.especialidade }}</strong>,
+      realizada nesta Instituição, no período de
+      <strong>{{ inicio_fmt }}</strong>
+      a
+      <strong>{{ termino_fmt }}</strong>{% if estagio.carga_horaria %},
+      com carga horária total de <strong>{{ estagio.carga_horaria }}h</strong>{% endif %}.
+    </p>
+
+    <div class="date-line">{{ data_geracao }}</div>
+
+    <div class="signatures">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Dr. Antonio Nocchi Kalil</div>
+        <div class="sig-role">Diretor Médico e Diretor de Ensino e Pesquisa</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Cássio Cassel</div>
+        <div class="sig-role">Gerente de Ensino e Pesquisa</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

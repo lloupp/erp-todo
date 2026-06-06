@@ -227,6 +227,21 @@ async function loadEstagios() {
             ? `<span title="${dias} dias nesta etapa" style="color:${alertaCor};font-size:11px;font-weight:600;margin-left:4px;">&#9888; ${dias}d</span>`
             : '';
 
+        const comprovIcon = e.comprovante_estagio
+            ? ` <span title="Comprovante recebido" style="color:#22c55e;font-size:11px;">&#10004;</span>`
+            : '';
+
+        const btnPago = (e.status_pagamento !== 'Pago' && e.status_pagamento !== 'Isento')
+            ? `<button class="btn-icon" title="Marcar como Pago" onclick="marcarPago(${e.id})" style="color:#22c55e;">&#128176;</button>`
+            : '';
+
+        const certStyle = e.comprovante_estagio
+            ? 'color:#6366f1'
+            : 'color:var(--color-text-muted);cursor:not-allowed;opacity:.4;';
+        const certAttr = e.comprovante_estagio ? '' : 'disabled';
+        const certTitle = e.comprovante_estagio ? 'Emitir Certificado' : 'Aguardando comprovante de estagio';
+        const btnCert = `<button class="btn-icon" ${certAttr} title="${certTitle}" onclick="emitirCertificado(${e.id})" style="${certStyle}">&#127884;</button>`;
+
         tbody.innerHTML += `<tr>
             <td><span class="badge ${tipoBadge}">${e.tipo_nome}</span></td>
             <td><strong>${e.nome}</strong></td>
@@ -236,7 +251,7 @@ async function loadEstagios() {
             <td>${fmtDate(e.inicio)}</td>
             <td>${fmtDate(e.termino)}</td>
             <td>${e.valor ? 'R$ ' + Number(e.valor).toFixed(2) : '-'}</td>
-            <td><span class="badge" style="${statusBadge}">${e.status_pagamento || 'Interessado'}</span></td>
+            <td><span class="badge" style="${statusBadge}">${e.status_pagamento || 'Interessado'}</span>${comprovIcon}</td>
             <td>
                 <div class="progress-bar">${dots}</div>
                 <div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;">${e.etapa} - ${etapaNome}${alertaHtml}</div>
@@ -245,6 +260,8 @@ async function loadEstagios() {
                 <button class="btn-icon" title="Historico" onclick="verHistorico(${e.id},'${e.nome}')">&#9776;</button>
                 <button class="btn-icon" title="Editar" onclick="editarEstagio(${e.id})">&#9998;</button>
                 <button class="btn-icon" title="PDF" onclick="exportarPDF(${e.id})">&#128196;</button>
+                ${btnPago}
+                ${btnCert}
                 <button class="btn-icon" title="Avancar etapa" onclick="avancarEtapa(${e.id},'${e.nome}')">&#10148;</button>
                 <button class="btn-icon" title="Excluir" style="color:var(--color-danger);" onclick="confirmarExclusao(${e.id},'${e.nome}')">&#128465;</button>
             </td>
@@ -337,6 +354,8 @@ async function editarEstagio(id) {
     document.getElementById('form-telefone').value = e.telefone || '';
     document.getElementById('form-documentos').value = e.documentos || '';
     document.getElementById('form-certificado').value = e.envio_certificado || '';
+    document.getElementById('form-carga-horaria').value = e.carga_horaria || '';
+    document.getElementById('form-comprovante-estagio').checked = !!e.comprovante_estagio;
     document.getElementById('form-observacao').value = e.observacao || '';
     abrirModal('modal-form');
 }
@@ -361,6 +380,8 @@ async function salvarEstagio() {
         telefone: document.getElementById('form-telefone').value,
         documentos: document.getElementById('form-documentos').value,
         envio_certificado: document.getElementById('form-certificado').value,
+        carga_horaria: parseInt(document.getElementById('form-carga-horaria').value) || null,
+        comprovante_estagio: document.getElementById('form-comprovante-estagio').checked ? 1 : 0,
         observacao: document.getElementById('form-observacao').value,
     };
 
@@ -401,6 +422,17 @@ async function salvarEstagio() {
 
     fecharModal('modal-form');
     loadEstagios();
+}
+
+async function marcarPago(id) {
+    if (!confirm('Marcar este estágio como Pago?')) return;
+    const r = await fetch(`/api/estagios/${id}/pago`, { method: 'POST' });
+    if (r.ok) { showToast('Marcado como Pago!'); loadEstagios(); }
+    else showToast('Erro ao atualizar', true);
+}
+
+function emitirCertificado(id) {
+    window.open(`/api/estagios/${id}/certificado`, '_blank');
 }
 
 async function avancarEtapa(id, nome) {

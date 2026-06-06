@@ -40,6 +40,9 @@ ETAPAS_OBR_OPT = {
     7: 'Concluido',
 }
 
+MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho',
+            'julho','agosto','setembro','outubro','novembro','dezembro']
+
 ETAPA_COLORS = {
     0: '#6b7280',
     1: '#f59e0b',
@@ -468,7 +471,8 @@ def api_update_estagio(estagio_id):
     # Merge: use sent values, fall back to existing
     fields = ['tipo_id','mes_ano','semana','nome','cpf','especialidade','cracha',
               'valor','forma_pagamento','status_pagamento','comprovante_pagamento',
-              'inicio','termino','email','telefone','observacao','documentos','envio_certificado']
+              'inicio','termino','email','telefone','observacao','documentos',
+              'envio_certificado','carga_horaria','comprovante_estagio']
     vals = {f: data.get(f, existing[f]) for f in fields}
     try:
         db.execute('''
@@ -477,6 +481,7 @@ def api_update_estagio(estagio_id):
                 cracha=?, valor=?, forma_pagamento=?, status_pagamento=?,
                 comprovante_pagamento=?, inicio=?, termino=?, email=?, telefone=?,
                 observacao=?, documentos=?, envio_certificado=?,
+                carga_horaria=?, comprovante_estagio=?,
                 updated_at=CURRENT_TIMESTAMP
             WHERE id=?
         ''', (
@@ -486,7 +491,8 @@ def api_update_estagio(estagio_id):
             vals['status_pagamento'], vals['comprovante_pagamento'],
             vals['inicio'], vals['termino'], vals['email'],
             vals['telefone'], vals['observacao'], vals['documentos'],
-            vals['envio_certificado'], estagio_id,
+            vals['envio_certificado'], vals['carga_horaria'],
+            vals['comprovante_estagio'], estagio_id,
         ))
         db.commit()
     except sqlite3.IntegrityError as e:
@@ -589,6 +595,46 @@ def api_estagio_pdf(estagio_id):
     except Exception:
         # Fallback: render as printable HTML
         return html
+
+
+# ── API: Certificado PDF ──────────────────────────────────────
+@app.route('/api/estagios/<int:estagio_id>/certificado')
+@login_required
+def api_estagio_certificado(estagio_id):
+    db = get_db()
+    row = db.execute('SELECT e.*, t.nome as tipo_nome FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id WHERE e.id=?', (estagio_id,)).fetchone()
+    if not row:
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    if not row['comprovante_estagio']:
+        return jsonify({'erro': 'Comprovante de estagio nao recebido'}), 400
+    now = datetime.now()
+    data_ext = f"Porto Alegre, {now.day:02d} de {MESES_PT[now.month - 1]} de {now.year}"
+
+    def fmt_data(s):
+        if not s:
+            return '—'
+        parts = str(s).split('T')[0].split('-')
+        return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else s
+
+    html = render_template('certificado.html', estagio=row, data_geracao=data_ext,
+                           inicio_fmt=fmt_data(row['inicio']), termino_fmt=fmt_data(row['termino']))
+    try:
+        pdf_bytes = HTML(string=html).write_pdf()
+        nome_arquivo = row['nome'].replace(' ', '_')[:40]
+        return Response(pdf_bytes, mimetype='application/pdf',
+                        headers={'Content-Disposition': f'attachment; filename=certificado_{nome_arquivo}.pdf'})
+    except Exception:
+        return html
+
+
+# ── API: Marcar Pago ──────────────────────────────────────────
+@app.route('/api/estagios/<int:estagio_id>/pago', methods=['POST'])
+@login_required
+def api_marcar_pago(estagio_id):
+    db = get_db()
+    db.execute("UPDATE estagios SET status_pagamento='Pago', updated_at=CURRENT_TIMESTAMP WHERE id=?", (estagio_id,))
+    db.commit()
+    return jsonify({'ok': True})
 
 
 # ── API: Dropdowns ────────────────────────────────────────────
@@ -1312,6 +1358,10 @@ if __name__ == '__main__':
             db.execute('ALTER TABLE estagios ADD COLUMN comprovante_pagamento TEXT')
         if 'inicio' not in cols:
             db.execute('ALTER TABLE estagios ADD COLUMN inicio DATE')
+        if 'comprovante_estagio' not in cols:
+            db.execute('ALTER TABLE estagios ADD COLUMN comprovante_estagio INTEGER DEFAULT 0')
+        if 'carga_horaria' not in cols:
+            db.execute('ALTER TABLE estagios ADD COLUMN carga_horaria INTEGER')
         # Make cracha non-unique (allow duplicates for empty/0 values)
         try:
            db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
