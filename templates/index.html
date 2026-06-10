@@ -15,8 +15,9 @@
         </div>
         <div class="sidebar-body">
             <div class="sidebar-nav">
-                <a href="/" class="nav-link active">Estagios</a>
                 <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/" class="nav-link active">Observership</a>
+                <a href="/residentes" class="nav-link">Residentes</a>
                 <a href="/relatorios" class="nav-link">Relatorios</a>
                 <a href="/usuarios" class="nav-link" id="nav-usuarios" style="display:none;">Usuarios</a>
                 <a href="/vagas" class="nav-link" id="nav-vagas" style="display:none;">Vagas</a>
@@ -162,7 +163,10 @@
                     </div>
                     <div class="form-group">
                         <label>Especialidade *</label>
-                        <input type="text" id="form-especialidade" required>
+                        <input type="text" id="form-especialidade" list="list-especialidades" required>
+                        <datalist id="list-especialidades">
+                            {% for esp in especialidades %}<option value="{{ esp }}">{% endfor %}
+                        </datalist>
                     </div>
                     <div class="form-group">
                         <label>Cracha</label>
@@ -290,6 +294,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v={{ range(1,99999) | random }}"></script>
 </body>
 </html>

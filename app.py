@@ -59,6 +59,20 @@ ETAPA_COLORS = {
 
 FORMAS_PAGAMENTO = ['PIX', 'Boleto', 'Cartao', 'Dinheiro', 'Isento', 'Outro']
 
+TIPOS_RESIDENTE = ['Residente', 'Doutorando']
+MODALIDADES_RESIDENTE = ['Optativo', 'Convenio']
+STATUS_RESIDENTE = [
+    'Interessado', 'Em andamento', 'Deferido', 'Confirmado',
+    'Trocado', 'Indeferido', 'Desistente', 'Cancelado', 'Nao veio'
+]
+STATUS_RESIDENTE_COLORS = {
+    'Interessado':  '#6b7280', 'Em andamento': '#f59e0b',
+    'Deferido':     '#3b82f6', 'Confirmado':   '#10b981',
+    'Trocado':      '#06b6d4', 'Indeferido':   '#dc2626',
+    'Desistente':   '#9ca3af', 'Cancelado':    '#ef4444',
+    'Nao veio':     '#374151',
+}
+
 ITENS_POR_PAGINA = 15
 
 
@@ -221,6 +235,40 @@ def init_db():
             limite_semanal INTEGER NOT NULL DEFAULT 1
         );
 
+        CREATE TABLE IF NOT EXISTS residentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            email TEXT,
+            telefone TEXT,
+            cpf TEXT,
+            tipo TEXT NOT NULL DEFAULT 'Residente',
+            modalidade TEXT NOT NULL DEFAULT 'Optativo',
+            especialidade TEXT NOT NULL,
+            subespecialidade TEXT,
+            instituicao_origem TEXT,
+            programa_ano TEXT,
+            mes_ano TEXT NOT NULL,
+            inicio DATE,
+            termino DATE,
+            status TEXT NOT NULL DEFAULT 'Interessado',
+            valor REAL,
+            forma_pagamento TEXT,
+            status_pagamento TEXT DEFAULT 'Pendente',
+            comprovante_pagamento TEXT,
+            observacao TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS historico_residentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            residente_id INTEGER NOT NULL REFERENCES residentes(id),
+            status TEXT NOT NULL,
+            observacao TEXT,
+            responsavel TEXT,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         DELETE FROM historico_etapas;
         DELETE FROM notificacoes;
         DELETE FROM estagios;
@@ -301,7 +349,11 @@ def logout():
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    db = get_db()
+    especialidades = [r['especialidade'] for r in db.execute(
+        'SELECT especialidade FROM limite_especialidade ORDER BY especialidade COLLATE NOCASE'
+    ).fetchall()]
+    return render_template('index.html', especialidades=especialidades)
 
 
 @app.route('/dashboard')
@@ -763,11 +815,29 @@ def api_pendencias():
             FROM estagios e
         )
     ''').fetchone()
+
+    # Pendências de Residentes & Doutorandos
+    res_rows = db.execute('''
+        SELECT
+            COUNT(*) FILTER (WHERE status = "Interessado")                       AS novos,
+            COUNT(*) FILTER (WHERE status = "Em andamento")                      AS em_andamento,
+            COUNT(*) FILTER (WHERE status = "Deferido")                          AS deferidos,
+            COUNT(*) FILTER (WHERE status = "Confirmado")                        AS confirmados,
+            COUNT(*) FILTER (WHERE status_pagamento = "Pendente"
+                             AND status NOT IN ("Cancelado","Indeferido","Desistente","Nao veio")) AS pag_pendente
+        FROM residentes
+    ''').fetchone()
+
     return jsonify({
-        'em_andamento': rows['em_andamento'] or 0,
-        'criticos':     rows['criticos']     or 0,
-        'alertas':      rows['alertas']      or 0,
-        'pag_pendente': rows['pag_pendente'] or 0,
+        'em_andamento':       rows['em_andamento']          or 0,
+        'criticos':           rows['criticos']              or 0,
+        'alertas':            rows['alertas']               or 0,
+        'pag_pendente':       rows['pag_pendente']          or 0,
+        'res_novos':          res_rows['novos']             or 0,
+        'res_em_andamento':   res_rows['em_andamento']      or 0,
+        'res_deferidos':      res_rows['deferidos']         or 0,
+        'res_confirmados':    res_rows['confirmados']       or 0,
+        'res_pag_pendente':   res_rows['pag_pendente']      or 0,
     })
 
 
@@ -1456,6 +1526,416 @@ def api_vagas_semana():
     } for r in rows])
 
 
+# ── Residentes & Doutorandos ─────────────────────────────────
+
+@app.route('/residentes')
+@login_required
+def pagina_residentes():
+    db = get_db()
+    rows = db.execute('SELECT especialidade FROM limite_especialidade ORDER BY especialidade').fetchall()
+    especialidades = [r['especialidade'] for r in rows]
+    return render_template('residentes.html', especialidades=especialidades)
+
+
+@app.route('/api/residentes', methods=['GET'])
+@login_required
+def api_get_residentes():
+    db = get_db()
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', ITENS_POR_PAGINA))
+    tipo = request.args.get('tipo', '')
+    modalidade = request.args.get('modalidade', '')
+    especialidade = request.args.get('especialidade', '')
+    mes_ano = request.args.get('mes_ano', '')
+    status = request.args.get('status', '')
+    status_pagamento = request.args.get('status_pagamento', '')
+    busca = request.args.get('busca', '').strip()
+
+    conds = []
+    params = []
+
+    if tipo:
+        conds.append('tipo=?'); params.append(tipo)
+    if modalidade:
+        conds.append('modalidade=?'); params.append(modalidade)
+    if especialidade:
+        conds.append('especialidade=?'); params.append(especialidade)
+    if mes_ano:
+        conds.append('mes_ano=?'); params.append(mes_ano)
+    if status:
+        conds.append('status=?'); params.append(status)
+    if status_pagamento:
+        conds.append('status_pagamento=?'); params.append(status_pagamento)
+    if busca:
+        conds.append('(nome LIKE ? OR email LIKE ? OR cpf LIKE ? OR telefone LIKE ? OR instituicao_origem LIKE ? OR especialidade LIKE ? OR observacao LIKE ?)')
+        b = f'%{busca}%'
+        params.extend([b, b, b, b, b, b, b])
+
+    where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
+    total = db.execute(f'SELECT COUNT(*) FROM residentes {where}', params).fetchone()[0]
+    offset = (page - 1) * per_page
+    rows = db.execute(
+        f'SELECT * FROM residentes {where} ORDER BY mes_ano DESC, nome LIMIT ? OFFSET ?',
+        params + [per_page, offset]
+    ).fetchall()
+
+    return jsonify({
+        'data': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': max(1, (total + per_page - 1) // per_page),
+    })
+
+
+@app.route('/api/residentes', methods=['POST'])
+@login_required
+def api_create_residente():
+    db = get_db()
+    d = request.get_json()
+    if not d.get('nome') or not d.get('especialidade') or not d.get('mes_ano'):
+        return jsonify({'erro': 'Nome, especialidade e mes_ano sao obrigatorios'}), 400
+    cur = db.execute('''
+        INSERT INTO residentes
+            (nome, email, telefone, cpf, tipo, modalidade, especialidade, subespecialidade,
+             instituicao_origem, programa_ano, mes_ano, inicio, termino, status,
+             valor, forma_pagamento, status_pagamento, comprovante_pagamento, observacao,
+             data_inscricao, periodo_desejado, mes_desejado)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ''', (
+        d.get('nome'), d.get('email'), d.get('telefone'), d.get('cpf'),
+        d.get('tipo', 'Residente'), d.get('modalidade', 'Optativo'),
+        d.get('especialidade'), d.get('subespecialidade'),
+        d.get('instituicao_origem'), d.get('programa_ano'),
+        d.get('mes_ano'), d.get('inicio') or None, d.get('termino') or None,
+        d.get('status', 'Interessado'),
+        d.get('valor') or None, d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
+        d.get('comprovante_pagamento'), d.get('observacao'),
+        d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'),
+    ))
+    db.commit()
+    return jsonify({'id': cur.lastrowid}), 201
+
+
+@app.route('/api/residentes/<int:rid>', methods=['PUT'])
+@login_required
+def api_update_residente(rid):
+    db = get_db()
+    if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    d = request.get_json()
+    db.execute('''
+        UPDATE residentes SET
+            nome=?, email=?, telefone=?, cpf=?, tipo=?, modalidade=?,
+            especialidade=?, subespecialidade=?, instituicao_origem=?, programa_ano=?,
+            mes_ano=?, inicio=?, termino=?, status=?,
+            valor=?, forma_pagamento=?, status_pagamento=?, comprovante_pagamento=?,
+            observacao=?, data_inscricao=?, periodo_desejado=?, mes_desejado=?,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+    ''', (
+        d.get('nome'), d.get('email'), d.get('telefone'), d.get('cpf'),
+        d.get('tipo', 'Residente'), d.get('modalidade', 'Optativo'),
+        d.get('especialidade'), d.get('subespecialidade'),
+        d.get('instituicao_origem'), d.get('programa_ano'),
+        d.get('mes_ano'), d.get('inicio') or None, d.get('termino') or None,
+        d.get('status', 'Interessado'),
+        d.get('valor') or None, d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
+        d.get('comprovante_pagamento'), d.get('observacao'),
+        d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'), rid,
+    ))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/residentes/<int:rid>/historico', methods=['GET'])
+@login_required
+def api_historico_residente(rid):
+    db = get_db()
+    rows = db.execute(
+        'SELECT * FROM historico_residentes WHERE residente_id=? ORDER BY ts',
+        (rid,)
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/residentes/<int:rid>/avancar', methods=['POST'])
+@login_required
+def api_avancar_residente(rid):
+    db = get_db()
+    row = db.execute('SELECT * FROM residentes WHERE id=?', (rid,)).fetchone()
+    if not row:
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    d = request.get_json()
+    novo_status = d.get('status', row['status'])
+    obs = d.get('observacao', '')
+    responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
+
+    db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+               (novo_status, rid))
+    db.execute(
+        'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
+        (rid, novo_status, obs, responsavel)
+    )
+    db.commit()
+    return jsonify({'status': novo_status})
+
+
+@app.route('/api/residentes/<int:rid>', methods=['DELETE'])
+@login_required
+def api_delete_residente(rid):
+    db = get_db()
+    if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    db.execute('DELETE FROM residentes WHERE id=?', (rid,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/residentes/exportar-csv', methods=['GET'])
+@login_required
+def api_exportar_residentes_csv():
+    db = get_db()
+    sep = request.args.get('separador', ';')
+    if sep not in (';', '\t', ','):
+        sep = ';'
+
+    tipo = request.args.get('tipo', '')
+    modalidade = request.args.get('modalidade', '')
+    especialidade = request.args.get('especialidade', '')
+    mes_ano = request.args.get('mes_ano', '')
+    status = request.args.get('status', '')
+    status_pagamento = request.args.get('status_pagamento', '')
+    busca = request.args.get('busca', '').strip()
+
+    conds, params = [], []
+    if tipo:
+        conds.append('tipo=?'); params.append(tipo)
+    if modalidade:
+        conds.append('modalidade=?'); params.append(modalidade)
+    if especialidade:
+        conds.append('especialidade=?'); params.append(especialidade)
+    if mes_ano:
+        conds.append('mes_ano=?'); params.append(mes_ano)
+    if status:
+        conds.append('status=?'); params.append(status)
+    if status_pagamento:
+        conds.append('status_pagamento=?'); params.append(status_pagamento)
+    if busca:
+        conds.append('(nome LIKE ? OR email LIKE ? OR especialidade LIKE ?)')
+        b = f'%{busca}%'; params.extend([b, b, b])
+
+    where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
+    rows = db.execute(
+        f'SELECT * FROM residentes {where} ORDER BY mes_ano DESC, nome', params
+    ).fetchall()
+
+    def fmt(v):
+        if v is None: return ''
+        return str(v).replace(sep, ' ')
+
+    header = ['ID','Nome','Email','Telefone','CPF','Tipo','Modalidade','Especialidade',
+              'Subespecialidade','Instituicao','Programa/Ano','Mes/Ano','Inicio','Termino',
+              'Status','Valor','Forma Pagamento','Status Pagamento','Comprovante','Observacao',
+              'Data Inscricao','Periodo Desejado','Mes Desejado']
+    lines = [sep.join(header)]
+    for r in rows:
+        lines.append(sep.join([
+            fmt(r['id']), fmt(r['nome']), fmt(r['email']), fmt(r['telefone']), fmt(r['cpf']),
+            fmt(r['tipo']), fmt(r['modalidade']), fmt(r['especialidade']),
+            fmt(r['subespecialidade']), fmt(r['instituicao_origem']), fmt(r['programa_ano']),
+            fmt(r['mes_ano']), fmt(r['inicio']), fmt(r['termino']),
+            fmt(r['status']), fmt(r['valor']), fmt(r['forma_pagamento']),
+            fmt(r['status_pagamento']), fmt(r['comprovante_pagamento']), fmt(r['observacao']),
+            fmt(r['data_inscricao']), fmt(r['periodo_desejado']), fmt(r['mes_desejado']),
+        ]))
+    csv_bytes = ('﻿' + '\r\n'.join(lines)).encode('utf-8')
+    return Response(csv_bytes, mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment; filename=residentes.csv'})
+
+
+_COL_IMPORT_RESIDENTE = {
+    'nome': 'nome', 'nome completo': 'nome',
+    'e-mail': 'email', 'email': 'email',
+    'whatsapp': 'telefone', 'telefone': 'telefone', 'celular': 'telefone',
+    'especialidade': 'especialidade', 'especialidade desejada': 'especialidade',
+    'mês desejado': 'mes_texto', 'mes desejado': 'mes_texto',
+    'mês(es) desejado(s)': 'mes_texto', 'mes(es) desejado(s)': 'mes_texto',
+    'mês desejado 1': 'mes_texto', 'mes desejado 1': 'mes_texto',
+    'instituição de origem': 'instituicao_origem', 'instituicao de origem': 'instituicao_origem',
+    'instituição': 'instituicao_origem', 'instituicao': 'instituicao_origem',
+    'programa e ano (cursando)': 'programa_ano', 'programa/ano': 'programa_ano',
+    'programa': 'programa_ano', 'status': 'programa_ano',
+    'observação': 'observacao', 'observacao': 'observacao',
+    'período desejado (xx/xx/xxxx)': 'periodo_desejado', 'periodo desejado (xx/xx/xxxx)': 'periodo_desejado',
+    'mês desejado 2': 'mes_desejado2', 'mes desejado 2': 'mes_desejado2',
+    'hora de conclusão': 'data_inscricao', 'hora de conclusao': 'data_inscricao',
+    'hora de início': 'data_inscricao', 'hora de inicio': 'data_inscricao',
+    'carimbo de data/hora': 'data_inscricao', 'timestamp': 'data_inscricao',
+}
+
+_MESES_PT_IMPORT = {
+    'janeiro': '01', 'fevereiro': '02', 'março': '03', 'marco': '03',
+    'abril': '04', 'maio': '05', 'junho': '06', 'julho': '07',
+    'agosto': '08', 'setembro': '09', 'outubro': '10',
+    'novembro': '11', 'dezembro': '12',
+}
+
+
+def _parse_mes_texto(texto):
+    """Tenta extrair YYYY-MM de um texto livre de mês."""
+    if not texto:
+        return None
+    t = str(texto).lower().strip()
+    import re as _re
+    # "janeiro 2026", "janeiro/2026", "janeiro de 2026"
+    for nome, num in _MESES_PT_IMPORT.items():
+        if nome in t:
+            m = _re.search(r'(20\d{2})', t)
+            ano = m.group(1) if m else '2026'
+            return f'{ano}-{num}'
+    # "01/2026" ou "01/26"
+    m = _re.search(r'(\d{1,2})[/-](\d{2,4})', t)
+    if m:
+        mes = m.group(1).zfill(2)
+        ano = m.group(2)
+        if len(ano) == 2:
+            ano = '20' + ano
+        if 1 <= int(mes) <= 12:
+            return f'{ano}-{mes}'
+    return None
+
+
+def _parse_inscricoes_residentes_xlsx(wb, tipo_default='Residente'):
+    """Parser para planilhas de inscrição de residentes/doutorandos."""
+    import re as _re
+    records = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        col_map = {}
+        header_found = False
+        for row in ws.iter_rows(values_only=True):
+            if not any(c for c in row if c is not None):
+                continue
+            if not header_found:
+                candidate = {}
+                for j, cell in enumerate(row):
+                    if cell is None:
+                        continue
+                    key = str(cell).strip().lower()
+                    if key in _COL_IMPORT_RESIDENTE:
+                        candidate[j] = _COL_IMPORT_RESIDENTE[key]
+                if 'nome' in candidate.values():
+                    col_map = candidate
+                    header_found = True
+                continue
+
+            rec = {}
+            for j, campo in col_map.items():
+                val = row[j] if j < len(row) else None
+                rec[campo] = _xclean(val)
+
+            nome = rec.get('nome', '')
+            if not nome or nome.lower() in ('nome', 'nome completo', ''):
+                continue
+
+            especialidade = rec.get('especialidade', '') or ''
+            if not especialidade:
+                continue
+
+            # mes_ano: tenta campo mes_texto (mês desejado 1), depois periodo_desejado
+            mes_texto = rec.get('mes_texto', '') or rec.get('mes_desejado', '') or ''
+            mes_ano = _parse_mes_texto(mes_texto)
+            if not mes_ano:
+                mes_ano = _parse_mes_texto(rec.get('periodo_desejado', '') or '')
+            if not mes_ano:
+                mes_ano = '2026-01'  # fallback — usuário corrige
+
+            # data_inscricao: guarda como texto para não perder granularidade
+            data_inscricao = rec.get('data_inscricao', '') or ''
+            if hasattr(data_inscricao, 'strftime'):
+                data_inscricao = data_inscricao.strftime('%d/%m/%Y %H:%M')
+            else:
+                data_inscricao = str(data_inscricao).strip() if data_inscricao else ''
+
+            records.append({
+                'nome': nome,
+                'email': rec.get('email', ''),
+                'telefone': rec.get('telefone', ''),
+                'especialidade': especialidade,
+                'instituicao_origem': rec.get('instituicao_origem', ''),
+                'programa_ano': rec.get('programa_ano', ''),
+                'mes_ano': mes_ano,
+                'observacao': rec.get('observacao', ''),
+                'data_inscricao': data_inscricao,
+                'periodo_desejado': rec.get('periodo_desejado', '') or '',
+                'mes_desejado': mes_texto,
+                'tipo': tipo_default,
+                'modalidade': 'Optativo',
+                'status': 'Interessado',
+                'status_pagamento': 'Pendente',
+            })
+    return records
+
+
+@app.route('/api/residentes/importar-excel', methods=['POST'])
+@login_required
+def api_importar_residentes_excel():
+    import openpyxl, io
+    confirmar = request.args.get('confirmar', '0') == '1'
+    tipo_default = request.args.get('tipo', 'Residente')
+    if tipo_default not in TIPOS_RESIDENTE:
+        tipo_default = 'Residente'
+
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'erro': 'Nenhum arquivo enviado'}), 400
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao ler arquivo: {e}'}), 400
+
+    todos = _parse_inscricoes_residentes_xlsx(wb, tipo_default)
+
+    db = get_db()
+    existentes = set()
+    for r in db.execute('SELECT nome, especialidade, mes_ano FROM residentes').fetchall():
+        existentes.add((r['nome'].lower(), r['especialidade'].lower(), r['mes_ano']))
+
+    novos, duplicados = [], []
+    for rec in todos:
+        chave = (rec['nome'].lower(), rec['especialidade'].lower(), rec['mes_ano'])
+        if chave in existentes:
+            duplicados.append(rec)
+        else:
+            novos.append(rec)
+            existentes.add(chave)
+
+    if confirmar:
+        for rec in novos:
+            db.execute('''
+                INSERT INTO residentes
+                    (nome, email, telefone, tipo, modalidade, especialidade,
+                     instituicao_origem, programa_ano, mes_ano, status,
+                     status_pagamento, observacao,
+                     data_inscricao, periodo_desejado, mes_desejado)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (rec['nome'], rec.get('email',''), rec.get('telefone',''),
+                  rec['tipo'], rec.get('modalidade','Optativo'), rec['especialidade'],
+                  rec.get('instituicao_origem',''), rec.get('programa_ano',''), rec['mes_ano'],
+                  rec['status'], rec['status_pagamento'], rec.get('observacao',''),
+                  rec.get('data_inscricao',''), rec.get('periodo_desejado',''), rec.get('mes_desejado','')))
+        db.commit()
+
+    return jsonify({
+        'total_planilha': len(todos),
+        'novos': len(novos),
+        'duplicados': len(duplicados),
+        'preview': novos[:30],
+    })
+
+
 # ── Run ───────────────────────────────────────────────────────
 if __name__ == '__main__':
     if not os.path.exists(DB_PATH):
@@ -1526,6 +2006,40 @@ if __name__ == '__main__':
                 ('Terapia intensiva', 2),
             ]
             db.executemany('INSERT OR IGNORE INTO limite_especialidade (especialidade, limite_semanal) VALUES (?,?)', limites_seed)
+        # Migrar tabela residentes
+        db.execute('''CREATE TABLE IF NOT EXISTS residentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            email TEXT,
+            telefone TEXT,
+            cpf TEXT,
+            tipo TEXT NOT NULL DEFAULT 'Residente',
+            modalidade TEXT NOT NULL DEFAULT 'Optativo',
+            especialidade TEXT NOT NULL,
+            subespecialidade TEXT,
+            instituicao_origem TEXT,
+            programa_ano TEXT,
+            mes_ano TEXT NOT NULL,
+            inicio DATE,
+            termino DATE,
+            status TEXT NOT NULL DEFAULT 'Interessado',
+            valor REAL,
+            forma_pagamento TEXT,
+            status_pagamento TEXT DEFAULT 'Pendente',
+            comprovante_pagamento TEXT,
+            observacao TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+        res_cols = [r[1] for r in db.execute('PRAGMA table_info(residentes)').fetchall()]
+        for col, defn in [('subespecialidade', 'TEXT'), ('programa_ano', 'TEXT'),
+                          ('instituicao_origem', 'TEXT'), ('cpf', 'TEXT'),
+                          ('valor', 'REAL'), ('forma_pagamento', 'TEXT'),
+                          ('status_pagamento', "TEXT DEFAULT 'Pendente'"),
+                          ('comprovante_pagamento', 'TEXT')]:
+            if res_cols and col not in res_cols:
+                db.execute(f'ALTER TABLE residentes ADD COLUMN {col} {defn}')
+
         # Seed default admin if no users exist
         user_count = db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0]
         if user_count == 0:

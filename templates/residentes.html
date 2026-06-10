@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Residentes e Doutorandos</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .badge-tipo { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; }
+        .badge-Residente  { background:#dbeafe; color:#1d4ed8; }
+        .badge-Doutorando { background:#ede9fe; color:#6d28d9; }
+        .badge-status { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; color:#fff; }
+        .badge-pago   { background:#10b981; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; display:inline-block; }
+        .badge-pendente { background:#f59e0b; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; display:inline-block; }
+        .badge-isento   { background:#6b7280; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; display:inline-block; }
+        .badge-cancelado-pag { background:#dc2626; color:#fff; font-size:11px; padding:2px 8px; border-radius:12px; display:inline-block; }
+        .filters { display:flex; gap:8px; flex-wrap:wrap; padding:16px 24px; align-items:center; }
+        .filters input, .filters select { height:36px; padding:0 10px; border:1px solid var(--color-border); border-radius:6px; background:var(--color-surface); color:var(--color-text); font-size:13px; }
+        .filters input { min-width:200px; }
+        #import-preview { max-height:260px; overflow-y:auto; margin-top:8px; }
+        #import-preview table { width:100%; font-size:12px; border-collapse:collapse; }
+        #import-preview th, #import-preview td { padding:4px 8px; border:1px solid var(--color-border); }
+        #import-preview thead { position:sticky; top:0; background:var(--color-surface); }
+        .pagination { display:flex; align-items:center; gap:6px; padding:12px 24px; }
+        .pagination button { padding:4px 10px; border-radius:6px; border:1px solid var(--color-border); background:var(--color-surface); cursor:pointer; color:var(--color-text); }
+        .pagination button:disabled { opacity:.4; cursor:not-allowed; }
+        .pagination span { font-size:13px; color:var(--color-text-secondary); }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Estagios</h1>
+            <p class="subtitle">Santa Casa / UFCSPA</p>
+        </div>
+        <div class="sidebar-body">
+            <div class="sidebar-nav">
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/" class="nav-link">Observership</a>
+                <a href="/residentes" class="nav-link active">Residentes</a>
+                <a href="/relatorios" class="nav-link">Relatorios</a>
+                <a href="/usuarios" class="nav-link">Usuarios</a>
+                <a href="/vagas" class="nav-link">Vagas</a>
+            </div>
+            <div class="sidebar-user" id="sidebar-user">
+                <strong>Carregando...</strong>
+                <span></span>
+            </div>
+            <div style="margin-top:8px;">
+                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2>Residentes &amp; Doutorandos</h2>
+            <div class="topbar-right">
+                <button class="btn btn-sm btn-secondary" onclick="abrirModalImport()">&#8679; Importar Excel</button>
+                <button class="btn btn-sm btn-secondary" onclick="exportarCSV()">&#8681; Exportar CSV</button>
+                <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo</button>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
+            </div>
+        </div>
+
+        <!-- Banner pendências -->
+        <div id="welcome-banner" style="padding:0 24px;margin-bottom:4px;"></div>
+
+        <!-- Filtros -->
+        <div class="filters">
+            <input type="search" id="f-busca" placeholder="Buscar nome, email, CPF..." oninput="debounceLoad()">
+            <select id="f-tipo" onchange="loadResidentes()">
+                <option value="">Todos os tipos</option>
+                <option value="Residente">Residente</option>
+                <option value="Doutorando">Doutorando</option>
+            </select>
+            <select id="f-modalidade" onchange="loadResidentes()">
+                <option value="">Todas modalidades</option>
+                <option value="Optativo">Optativo</option>
+                <option value="Convenio">Convenio</option>
+            </select>
+            <select id="f-especialidade" onchange="loadResidentes()">
+                <option value="">Todas especialidades</option>
+            </select>
+            <input type="month" id="f-mes" onchange="loadResidentes()" title="Mes/Ano">
+            <select id="f-status" onchange="loadResidentes()">
+                <option value="">Todos os status</option>
+                <option>Interessado</option>
+                <option>Em andamento</option>
+                <option>Deferido</option>
+                <option>Confirmado</option>
+                <option>Trocado</option>
+                <option>Indeferido</option>
+                <option>Desistente</option>
+                <option>Cancelado</option>
+                <option>Nao veio</option>
+            </select>
+            <select id="f-pagamento" onchange="loadResidentes()">
+                <option value="">Todos pagamentos</option>
+                <option value="Pendente">Pendente</option>
+                <option value="Pago">Pago</option>
+                <option value="Isento">Isento</option>
+                <option value="Cancelado">Cancelado</option>
+            </select>
+            <button class="btn btn-sm btn-ghost" onclick="limparFiltros()">Limpar</button>
+        </div>
+
+        <!-- Tabela -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th>Especialidade</th>
+                        <th>Instituicao</th>
+                        <th>Data Inscricao</th>
+                        <th>Mes Desejado</th>
+                        <th>Periodo Desejado</th>
+                        <th>Mes/Ano</th>
+                        <th>Status</th>
+                        <th>Pagamento</th>
+                        <th style="width:90px;">Acoes</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-residentes"></tbody>
+            </table>
+            <div id="empty-state" class="empty-state" style="display:none;">Nenhum registro encontrado.</div>
+        </div>
+        <div class="pagination" id="paginacao"></div>
+    </main>
+
+    <!-- ═══════════════════ MODAL CRIAR/EDITAR ═══════════════════ -->
+    <div class="modal-overlay" id="modal-residente">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-titulo">Novo Residente</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-residente')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="form-id">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Tipo *</label>
+                        <select id="form-tipo">
+                            <option value="Residente">Residente</option>
+                            <option value="Doutorando">Doutorando</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Modalidade</label>
+                        <select id="form-modalidade">
+                            <option value="Optativo">Optativo</option>
+                            <option value="Convenio">Convenio</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Nome *</label>
+                        <input type="text" id="form-nome" required>
+                    </div>
+                    <div class="form-group">
+                        <label>CPF</label>
+                        <input type="text" id="form-cpf" placeholder="000.000.000-00">
+                    </div>
+                    <div class="form-group">
+                        <label>Especialidade *</label>
+                        <input type="text" id="form-especialidade" list="list-esp-res" required>
+                        <datalist id="list-esp-res">
+                            {% for esp in especialidades %}<option value="{{ esp }}">{% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>Subespecialidade</label>
+                        <input type="text" id="form-subesp">
+                    </div>
+                    <div class="form-group">
+                        <label>Mes/Ano *</label>
+                        <input type="month" id="form-mes-ano" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="form-status">
+                            <option>Interessado</option>
+                            <option>Em andamento</option>
+                            <option>Deferido</option>
+                            <option>Confirmado</option>
+                            <option>Trocado</option>
+                            <option>Indeferido</option>
+                            <option>Desistente</option>
+                            <option>Cancelado</option>
+                            <option>Nao veio</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Data Inicio</label>
+                        <input type="date" id="form-inicio">
+                    </div>
+                    <div class="form-group">
+                        <label>Data Termino</label>
+                        <input type="date" id="form-termino">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="form-email">
+                    </div>
+                    <div class="form-group">
+                        <label>Telefone / WhatsApp</label>
+                        <input type="text" id="form-telefone" placeholder="(51) 99999-9999">
+                    </div>
+                    <div class="form-group">
+                        <label>Instituicao de Origem</label>
+                        <input type="text" id="form-instituicao">
+                    </div>
+                    <div class="form-group">
+                        <label>Programa / Ano</label>
+                        <input type="text" id="form-programa" placeholder="Ex: R2 Pediatria">
+                    </div>
+                    <div class="form-group">
+                        <label>Valor (R$)</label>
+                        <input type="number" id="form-valor" step="0.01" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Forma Pagamento</label>
+                        <select id="form-forma-pag">
+                            <option value="">Selecione</option>
+                            <option>Boleto</option>
+                            <option>PIX</option>
+                            <option>Cartao</option>
+                            <option>Dinheiro</option>
+                            <option>Transferencia</option>
+                            <option>Isento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Status Pagamento</label>
+                        <select id="form-status-pag">
+                            <option value="Pendente">Pendente</option>
+                            <option value="Pago">Pago</option>
+                            <option value="Isento">Isento</option>
+                            <option value="Cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Comprovante Pagto</label>
+                        <input type="text" id="form-comprovante" placeholder="Nr. comprovante">
+                    </div>
+                    <div class="form-group">
+                        <label>Data de Inscricao</label>
+                        <input type="text" id="form-data-inscricao" placeholder="dd/mm/aaaa hh:mm">
+                    </div>
+                    <div class="form-group">
+                        <label>Periodo Desejado</label>
+                        <input type="text" id="form-periodo-desejado" placeholder="xx/xx/xxxx">
+                    </div>
+                    <div class="form-group">
+                        <label>Mes Desejado</label>
+                        <input type="text" id="form-mes-desejado" placeholder="Ex: Janeiro 2026">
+                    </div>
+                    <div class="form-group full">
+                        <label>Observacao</label>
+                        <textarea id="form-obs"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-residente')">Cancelar</button>
+                <button class="btn btn-primary" onclick="salvarResidente()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL HISTÓRICO ═══════════════════ -->
+    <div class="modal-overlay" id="modal-historico-res">
+        <div class="modal" style="max-width:620px;">
+            <div class="modal-header">
+                <h3 id="hist-titulo">Historico</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-historico-res')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <table class="recent-table" style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Status</th>
+                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Observacao</th>
+                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Responsavel</th>
+                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Data</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-hist"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-historico-res')">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL AVANÇAR STATUS ═══════════════════ -->
+    <div class="modal-overlay" id="modal-avancar">
+        <div class="modal" style="max-width:440px;">
+            <div class="modal-header">
+                <h3>Avançar Status</h3>
+                <button class="modal-close" onclick="fecharModal('modal-avancar')">&#10005;</button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <strong id="avancar-nome"></strong>
+                    <br><small style="color:var(--color-text-secondary);">Status atual: <strong id="avancar-status-atual"></strong></small>
+                </div>
+                <label>Novo status
+                    <select id="avancar-novo-status" style="width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;">
+                        <option>Interessado</option>
+                        <option>Em andamento</option>
+                        <option>Deferido</option>
+                        <option>Confirmado</option>
+                        <option>Trocado</option>
+                        <option>Indeferido</option>
+                        <option>Desistente</option>
+                        <option>Cancelado</option>
+                        <option>Nao veio</option>
+                    </select>
+                </label>
+                <label>Observacao (opcional)
+                    <textarea id="avancar-obs" rows="2" placeholder="Ex: Documentação recebida, pagamento confirmado..." style="width:100%;resize:vertical;padding:6px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;"></textarea>
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="fecharModal('modal-avancar')">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarAvancar()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL EXCLUIR ═══════════════════ -->
+    <div class="modal-overlay" id="modal-excluir">
+        <div class="modal" style="max-width:400px;">
+            <div class="modal-header">
+                <h3>Confirmar exclusao</h3>
+                <button class="modal-close" onclick="fecharModal('modal-excluir')">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <p>Deseja realmente excluir <strong id="excluir-nome"></strong>? Esta acao nao pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="fecharModal('modal-excluir')">Cancelar</button>
+                <button class="btn btn-danger" onclick="excluirResidente()">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL IMPORTAR ═══════════════════ -->
+    <div class="modal-overlay" id="modal-import">
+        <div class="modal" style="max-width:720px;width:95%;">
+            <div class="modal-header">
+                <h3>Importar Inscricoes (Excel)</h3>
+                <button class="modal-close" onclick="fecharModal('modal-import')">&#10005;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
+                    <label style="display:flex;flex-direction:column;gap:4px;">
+                        Tipo dos registros
+                        <select id="import-tipo" style="height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);">
+                            <option value="Residente">Residente</option>
+                            <option value="Doutorando">Doutorando</option>
+                        </select>
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
+                        Arquivo Excel (.xlsx)
+                        <input type="file" id="import-file" accept=".xlsx,.xls" onchange="analisarArquivo()">
+                    </label>
+                </div>
+                <div id="import-status" style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;"></div>
+                <div id="import-preview"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="fecharModal('modal-import')">Cancelar</button>
+                <button class="btn btn-primary" id="btn-confirmar-import" onclick="confirmarImport()" disabled>Importar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast-container" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;"></div>
+
+    <script src="/static/js/residentes.js?v={{ range(1,99999)|random }}"></script>
+</body>
+</html>

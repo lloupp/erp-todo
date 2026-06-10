@@ -82,27 +82,56 @@ function renderWelcomeMessage(nome, p) {
     const banner = document.getElementById('welcome-banner');
     if (!banner) return;
 
-    const chips = [];
+    // ── Chips estágios ──
+    const chipsEstagio = [];
     if (p.em_andamento > 0) {
-        chips.push(`<span class="welcome-chip" style="background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text)" onclick="filtrarPendencia('em_andamento')">📋 ${p.em_andamento} em andamento</span>`);
+        chipsEstagio.push(`<span class="welcome-chip" style="background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text);cursor:pointer" onclick="filtrarPendencia('em_andamento')">📋 ${p.em_andamento} estágio(s) em andamento</span>`);
     }
     if (p.criticos > 0) {
-        chips.push(`<span class="welcome-chip" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626" onclick="filtrarPendencia('criticos')">⚠ ${p.criticos} críticos (+14 dias)</span>`);
+        chipsEstagio.push(`<span class="welcome-chip" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;cursor:pointer" onclick="filtrarPendencia('criticos')">⚠ ${p.criticos} crítico(s) (+14 dias)</span>`);
     }
     if (p.alertas > 0) {
-        chips.push(`<span class="welcome-chip" style="background:#fff7ed;border:1px solid #fcd34d;color:#d97706" onclick="filtrarPendencia('alertas')">⚡ ${p.alertas} alertas (7–14 dias)</span>`);
+        chipsEstagio.push(`<span class="welcome-chip" style="background:#fff7ed;border:1px solid #fcd34d;color:#d97706;cursor:pointer" onclick="filtrarPendencia('alertas')">⚡ ${p.alertas} alerta(s) (7–14 dias)</span>`);
     }
     if (p.pag_pendente > 0) {
-        chips.push(`<span class="welcome-chip" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e" onclick="filtrarPendencia('pag_pendente')">R$ ${p.pag_pendente} pagamentos pendentes</span>`);
+        chipsEstagio.push(`<span class="welcome-chip" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;cursor:pointer" onclick="filtrarPendencia('pag_pendente')">💳 ${p.pag_pendente} pagamento(s) pendente(s)</span>`);
     }
 
-    const tudo_ok = chips.length === 0 || (p.criticos === 0 && p.alertas === 0 && p.pag_pendente === 0);
-    const extra = tudo_ok && p.em_andamento > 0 ? ' Tudo em dia!' : '';
+    // ── Chips residentes ──
+    const chipsRes = [];
+    if (p.res_novos > 0) {
+        chipsRes.push(`<span class="welcome-chip" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;cursor:pointer" onclick="location.href='/residentes?status=Interessado'">🆕 ${p.res_novos} nova(s) inscrição(ões)</span>`);
+    }
+    if (p.res_em_andamento > 0) {
+        chipsRes.push(`<span class="welcome-chip" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;cursor:pointer" onclick="location.href='/residentes?status=Em+andamento'">▶ ${p.res_em_andamento} residente(s) em andamento</span>`);
+    }
+    if (p.res_deferidos > 0) {
+        chipsRes.push(`<span class="welcome-chip" style="background:#eff6ff;border:1px solid #93c5fd;color:#1e40af;cursor:pointer" onclick="location.href='/residentes?status=Deferido'">✔ ${p.res_deferidos} deferido(s)</span>`);
+    }
+    if (p.res_pag_pendente > 0) {
+        chipsRes.push(`<span class="welcome-chip" style="background:#fefce8;border:1px solid #fde047;color:#854d0e;cursor:pointer" onclick="location.href='/residentes?pagamento=Pendente'">💰 ${p.res_pag_pendente} pagamento(s) residente(s) pendente(s)</span>`);
+    }
+
+    const semProblemas = p.criticos === 0 && p.alertas === 0 && p.pag_pendente === 0 && p.res_pag_pendente === 0;
+    const extra = semProblemas ? ' Tudo em dia!' : '';
+
+    const labelStyle = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-secondary);white-space:nowrap;';
+    const separador = `<span style="width:1px;height:20px;background:var(--color-border);display:inline-block;margin:0 6px;vertical-align:middle;"></span>`;
+
+    const grupoObs = chipsEstagio.length > 0
+        ? `<span style="${labelStyle}">Observership</span>${chipsEstagio.join('')}`
+        : '';
+    const grupoRes = chipsRes.length > 0
+        ? `<span style="${labelStyle}">Residentes</span>${chipsRes.join('')}`
+        : '';
+
+    const grupos = [grupoObs, grupoRes].filter(Boolean).join(separador);
 
     banner.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;">
             <span style="font-weight:600;color:var(--color-text);white-space:nowrap;">${saudacao()}, ${nome}!${extra}</span>
-            ${chips.join('')}
+            <span style="width:1px;height:20px;background:var(--color-border);display:inline-block;margin:0 6px;vertical-align:middle;"></span>
+            ${grupos}
         </div>`;
 }
 
