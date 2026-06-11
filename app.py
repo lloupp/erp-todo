@@ -1,6 +1,7 @@
 import re
 import sqlite3
 import os
+import time
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -16,6 +17,8 @@ except ImportError:
 from flask import Flask, render_template, request, jsonify, g, Response, redirect, url_for, flash, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_weasyprint import HTML
+
+import ai  # assistente IA (NVIDIA NIM) — lê config de env em runtime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estagios.db')
 
@@ -810,59 +813,178 @@ def api_formas_pagamento():
 @login_required
 def api_dashboard():
     db = get_db()
+    mes_filtro = request.args.get('mes_ano', '').strip()  # filtro opcional
 
-    total = db.execute('SELECT COUNT(*) FROM estagios').fetchone()[0]
+    def where_mes(alias='e'):
+        return f" AND {alias}.mes_ano = ?" if mes_filtro else ""
+    def params_mes():
+        return [mes_filtro] if mes_filtro else []
 
-    by_tipo = db.execute('''
+    # ── Estágios ──
+    total = db.execute(
+        f'SELECT COUNT(*) FROM estagios e WHERE 1=1{where_mes()}', params_mes()
+    ).fetchone()[0]
+
+    by_tipo = db.execute(f'''
         SELECT t.nome, COUNT(*) as cnt
         FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
+        WHERE 1=1{where_mes()}
         GROUP BY e.tipo_id ORDER BY cnt DESC
-    ''').fetchall()
+    ''', params_mes()).fetchall()
 
-    by_etapa = db.execute('''
-        SELECT etapa, COUNT(*) as cnt FROM estagios GROUP BY etapa ORDER BY etapa
-    ''').fetchall()
+    by_etapa = db.execute(f'''
+        SELECT etapa, COUNT(*) as cnt FROM estagios e
+        WHERE 1=1{where_mes()}
+        GROUP BY etapa ORDER BY etapa
+    ''', params_mes()).fetchall()
 
-    by_especialidade = db.execute('''
-        SELECT especialidade, COUNT(*) as cnt
-        FROM estagios GROUP BY especialidade ORDER BY cnt DESC
-    ''').fetchall()
+    by_especialidade = db.execute(f'''
+        SELECT especialidade, COUNT(*) as cnt FROM estagios e
+        WHERE 1=1{where_mes()}
+        GROUP BY especialidade ORDER BY cnt DESC LIMIT 15
+    ''', params_mes()).fetchall()
 
-    total_valor = db.execute('SELECT COALESCE(SUM(valor), 0) FROM estagios').fetchone()[0]
-    valor_pago = db.execute("SELECT COALESCE(SUM(valor), 0) FROM estagios WHERE status_pagamento = 'Pago'").fetchone()[0]
-    valor_pendente = total_valor - valor_pago
+    total_valor = db.execute(
+        f'SELECT COALESCE(SUM(valor),0) FROM estagios e WHERE 1=1{where_mes()}', params_mes()
+    ).fetchone()[0]
+    valor_pago = db.execute(
+        f"SELECT COALESCE(SUM(valor),0) FROM estagios e WHERE status_pagamento='Pago'{where_mes()}", params_mes()
+    ).fetchone()[0]
 
-    by_status_pag = db.execute('''
-        SELECT status_pagamento, COUNT(*) as cnt, COALESCE(SUM(valor), 0) as total
-        FROM estagios GROUP BY status_pagamento
-    ''').fetchall()
+    by_status_pag = db.execute(f'''
+        SELECT status_pagamento, COUNT(*) as cnt, COALESCE(SUM(valor),0) as total
+        FROM estagios e WHERE 1=1{where_mes()}
+        GROUP BY status_pagamento
+    ''', params_mes()).fetchall()
 
+    # Tendência mensal — últimos 18 meses (sem filtro de mês, sempre geral)
     by_mes = db.execute('''
-        SELECT mes_ano, COUNT(*) as cnt, COALESCE(SUM(valor), 0) as total
-        FROM estagios GROUP BY mes_ano ORDER BY mes_ano DESC
+        SELECT mes_ano, COUNT(*) as cnt, COALESCE(SUM(valor),0) as total
+        FROM estagios GROUP BY mes_ano ORDER BY mes_ano DESC LIMIT 18
     ''').fetchall()
 
-    recent = db.execute('''
-        SELECT e.*, t.nome as tipo_nome
+    # KPIs de alerta (estágios Observership)
+    kpis_estagio = db.execute(f'''
+        SELECT
+            COUNT(*) FILTER (WHERE etapa < 7) AS ativos,
+            COUNT(*) FILTER (WHERE etapa = 7) AS concluidos,
+            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 14) AS criticos,
+            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 7 AND dias <= 14) AS alertas,
+            COUNT(*) FILTER (WHERE status_pagamento = "Pendente" AND etapa < 7) AS pag_pendente
+        FROM (
+            SELECT e.etapa, e.status_pagamento,
+                CAST(julianday("now") - julianday(COALESCE(
+                    (SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id = e.id),
+                    e.updated_at, e.created_at)) AS INTEGER) AS dias
+            FROM estagios e WHERE e.tipo_id = 1{where_mes()}
+        )
+    ''', params_mes()).fetchone()
+
+    recent = db.execute(f'''
+        SELECT e.id, e.nome, e.etapa, e.updated_at, t.nome as tipo_nome, e.especialidade, e.status_pagamento
         FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
-        ORDER BY e.updated_at DESC LIMIT 5
+        WHERE 1=1{where_mes()}
+        ORDER BY e.updated_at DESC LIMIT 8
+    ''', params_mes()).fetchall()
+
+    # ── Residentes ──
+    res_total = db.execute(
+        "SELECT COUNT(*) FROM residentes" + (" WHERE mes_ano=?" if mes_filtro else ""),
+        params_mes()
+    ).fetchone()[0]
+
+    res_por_status = db.execute(
+        f"SELECT status, COUNT(*) as cnt FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''} "
+        f"GROUP BY status ORDER BY cnt DESC", params_mes()
+    ).fetchall()
+
+    res_por_tipo = db.execute(
+        f"SELECT COALESCE(tipo,'N/A') as tipo, COUNT(*) as cnt FROM residentes"
+        f"{'  WHERE mes_ano=?' if mes_filtro else ''} GROUP BY tipo ORDER BY cnt DESC", params_mes()
+    ).fetchall()
+
+    res_por_especialidade = db.execute(
+        f"SELECT COALESCE(especialidade,'N/A') as esp, COUNT(*) as cnt FROM residentes"
+        f"{'  WHERE mes_ano=?' if mes_filtro else ''} GROUP BY especialidade ORDER BY cnt DESC LIMIT 15",
+        params_mes()
+    ).fetchall()
+
+    res_financeiro = db.execute(
+        f"SELECT COALESCE(SUM(valor),0) as total, "
+        f"COALESCE(SUM(CASE WHEN status_pagamento='Pago' THEN valor ELSE 0 END),0) as pago "
+        f"FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''}", params_mes()
+    ).fetchone()
+
+    res_por_mes = db.execute('''
+        SELECT mes_ano, COUNT(*) as cnt FROM residentes
+        WHERE mes_ano IS NOT NULL AND mes_ano != ''
+        GROUP BY mes_ano ORDER BY mes_ano DESC LIMIT 18
     ''').fetchall()
+
+    res_kpis = db.execute(
+        f"SELECT "
+        f"COUNT(*) FILTER (WHERE status='Interessado') as novos, "
+        f"COUNT(*) FILTER (WHERE status='Em andamento') as em_andamento, "
+        f"COUNT(*) FILTER (WHERE status='Deferido') as deferidos, "
+        f"COUNT(*) FILTER (WHERE status='Confirmado') as confirmados, "
+        f"COUNT(*) FILTER (WHERE status_pagamento='Pendente' "
+        f"  AND status NOT IN ('Cancelado','Indeferido','Desistente','Nao veio')) as pag_pendente "
+        f"FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''}", params_mes()
+    ).fetchone()
+
+    # Lista de meses disponíveis para o filtro
+    meses_disp = [r[0] for r in db.execute('''
+        SELECT DISTINCT mes_ano FROM (
+            SELECT mes_ano FROM estagios WHERE mes_ano IS NOT NULL
+            UNION SELECT mes_ano FROM residentes WHERE mes_ano IS NOT NULL AND mes_ano != ''
+        ) ORDER BY mes_ano DESC
+    ''').fetchall()]
 
     return jsonify({
+        # Estágios
         'total_estagios': total,
         'total_valor': total_valor,
         'valor_pago': valor_pago,
-        'valor_pendente': valor_pendente,
+        'valor_pendente': (total_valor or 0) - (valor_pago or 0),
         'por_tipo': [{'nome': r['nome'], 'count': r['cnt']} for r in by_tipo],
         'por_etapa': [{'etapa': r['etapa'], 'count': r['cnt']} for r in by_etapa],
         'por_especialidade': [{'nome': r['especialidade'], 'count': r['cnt']} for r in by_especialidade],
         'por_status_pagamento': [{'status': r['status_pagamento'], 'count': r['cnt'], 'total': r['total']} for r in by_status_pag],
         'por_mes': [{'mes_ano': r['mes_ano'], 'count': r['cnt'], 'total': r['total']} for r in by_mes],
+        'kpis_estagio': {
+            'ativos': kpis_estagio['ativos'] or 0,
+            'concluidos': kpis_estagio['concluidos'] or 0,
+            'criticos': kpis_estagio['criticos'] or 0,
+            'alertas': kpis_estagio['alertas'] or 0,
+            'pag_pendente': kpis_estagio['pag_pendente'] or 0,
+        },
         'recentes': [{
             'id': r['id'], 'nome': r['nome'], 'tipo_nome': r['tipo_nome'],
             'especialidade': r['especialidade'], 'etapa': r['etapa'],
-            'updated_at': r['updated_at']
+            'status_pagamento': r['status_pagamento'], 'updated_at': r['updated_at']
         } for r in recent],
+        # Residentes
+        'residentes': {
+            'total': res_total,
+            'por_status': [{'status': r['status'], 'count': r['cnt']} for r in res_por_status],
+            'por_tipo': [{'tipo': r['tipo'], 'count': r['cnt']} for r in res_por_tipo],
+            'por_especialidade': [{'nome': r['esp'], 'count': r['cnt']} for r in res_por_especialidade],
+            'por_mes': [{'mes_ano': r['mes_ano'], 'count': r['cnt']} for r in res_por_mes],
+            'financeiro': {
+                'total': res_financeiro['total'] or 0,
+                'pago': res_financeiro['pago'] or 0,
+                'pendente': (res_financeiro['total'] or 0) - (res_financeiro['pago'] or 0),
+            },
+            'kpis': {
+                'novos': res_kpis['novos'] or 0,
+                'em_andamento': res_kpis['em_andamento'] or 0,
+                'deferidos': res_kpis['deferidos'] or 0,
+                'confirmados': res_kpis['confirmados'] or 0,
+                'pag_pendente': res_kpis['pag_pendente'] or 0,
+            },
+        },
+        'meses_disponiveis': meses_disp,
+        'mes_filtro': mes_filtro or None,
     })
 
 
@@ -886,6 +1008,7 @@ def api_pendencias():
                     )
                 ) AS INTEGER) AS dias
             FROM estagios e
+            WHERE e.tipo_id = 1
         )
     ''').fetchone()
 
@@ -912,6 +1035,65 @@ def api_pendencias():
         'res_confirmados':    res_rows['confirmados']       or 0,
         'res_pag_pendente':   res_rows['pag_pendente']      or 0,
     })
+
+
+# ── API: Assistente IA (NVIDIA NIM) ───────────────────────────
+@app.route('/api/ai/status', methods=['GET'])
+@login_required
+def api_ai_status():
+    return jsonify({'enabled': ai.is_enabled()})
+
+
+@app.route('/api/ai/chat', methods=['POST'])
+@login_required
+def api_ai_chat():
+    if not ai.is_enabled():
+        return jsonify({'erro': 'Assistente de IA não está habilitado.'}), 503
+    data = request.get_json(silent=True) or {}
+    historico = data.get('messages') or []
+    if not isinstance(historico, list) or not historico:
+        return jsonify({'erro': 'Nenhuma mensagem enviada.'}), 400
+    # Limita o histórico para conter custo/contexto.
+    historico = historico[-12:]
+    try:
+        snapshot = ai.montar_snapshot(get_db())
+        mensagens = ai.montar_mensagens(snapshot, historico)
+        inicio = time.time()
+        resposta = ai.chamar_nvidia(mensagens)
+        ms = int((time.time() - inicio) * 1000)
+        ultima = (historico[-1].get('content') or '')[:120]
+        app.logger.info(f'IA chat OK ({ms}ms): "{ultima}"')
+        return jsonify({'resposta': resposta})
+    except ai.AIError as e:
+        app.logger.warning(f'IA chat FALHOU: {e}')
+        return jsonify({'erro': str(e)}), 502
+
+
+@app.route('/api/ai/insights', methods=['GET'])
+@login_required
+def api_ai_insights():
+    if not ai.is_enabled():
+        return jsonify({'erro': 'Assistente de IA não está habilitado.'}), 503
+    try:
+        snapshot = ai.montar_snapshot(get_db())
+        pedido = {
+            'role': 'user',
+            'content': (
+                'Faça um resumo executivo curto da situação atual (estágios e '
+                'residentes). Destaque o que precisa de atenção: estágios críticos/em '
+                'alerta, pagamentos pendentes e gargalos por etapa/status. '
+                'Use no máximo 8 linhas, em tópicos.'
+            ),
+        }
+        mensagens = ai.montar_mensagens(snapshot, [pedido])
+        inicio = time.time()
+        resumo = ai.chamar_nvidia(mensagens, temperature=0.2, max_tokens=700)
+        ms = int((time.time() - inicio) * 1000)
+        app.logger.info(f'IA insights OK ({ms}ms)')
+        return jsonify({'resumo': resumo})
+    except ai.AIError as e:
+        app.logger.warning(f'IA insights FALHOU: {e}')
+        return jsonify({'erro': str(e)}), 502
 
 
 # ── API: CSV Export ───────────────────────────────────────────

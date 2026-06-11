@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Estágios Médicos</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
     {% set active_page = 'dashboard' %}
@@ -14,12 +15,18 @@
         <div class="topbar">
             <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
             <h2>Dashboard</h2>
+            <div class="topbar-right">
+                <select id="dash-mes-filtro" class="btn btn-sm" onchange="trocarPeriodo(this.value)" title="Filtrar por mês/ano">
+                    <option value="">Todos os períodos</option>
+                </select>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
+            </div>
         </div>
         <div id="dashboard-container" class="dashboard-container">
             <p class="empty-state">Carregando...</p>
         </div>
     </main>
 
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js?v={{ range(1,99999) | random }}"></script>
 </body>
 </html>

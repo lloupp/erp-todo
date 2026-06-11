@@ -75,6 +75,15 @@ Migrações de schema são feitas inline no bloco `__main__` do `app.py` via `AL
 - Logging: `erp.log` com `RotatingFileHandler` (5 MB × 5). Registra login OK/falho com IP e usuário.
 - Sync Microsoft Forms: `sync_forms.py` (Task horária) importa planilhas do OneDrive para a tabela `residentes`.
 
+## Assistente IA (NVIDIA NIM)
+
+Botão flutuante global (FAB) presente em todas as telas via `templates/_sidebar.html`, que carrega `static/js/ai.js`. Backend em `ai.py` (módulo separado para não inchar `app.py`).
+
+- **Config (.env)**: `AI_ENABLED`, `NVIDIA_API_KEY`, `NVIDIA_MODEL` (default `meta/llama-3.3-70b-instruct`), `NVIDIA_BASE_URL` (default `https://integrate.api.nvidia.com/v1`). Sem chave, `ai.is_enabled()` é falso e o FAB não aparece.
+- **HTTP**: `urllib.request` da stdlib (sem nova dependência). Endpoint OpenAI-compatible `chat/completions`, `stream:false`.
+- **Segurança**: a IA **não gera nem executa SQL**. `ai.montar_snapshot(db)` pré-computa agregações read-only (reusa as queries de `/api/dashboard` e `/api/pendencias`) + listas de registros recentes. **Política de PII**: o snapshot inclui nome/especialidade/status, mas **nunca CPF, e-mail ou telefone**.
+- **Endpoints** (`@login_required`): `GET /api/ai/status` → `{enabled}`; `POST /api/ai/chat` (body `{messages:[...]}`, histórico limitado a 12); `GET /api/ai/insights` (resumo executivo). Erros viram `AIError` com mensagem amigável (HTTP 502).
+
 ## Workflow Stages
 
 Observership começa na etapa 1; Obrigatório/Optativo na etapa 0. Todos compartilham etapas 1–7.
