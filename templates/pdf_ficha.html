@@ -26,12 +26,12 @@
         <div class="info-item"><label>CPF</label><span>{{ estagio['cpf'] or '-' }}</span></div>
         <div class="info-item"><label>Tipo</label><span>{{ estagio['tipo_nome'] }}</span></div>
         <div class="info-item"><label>Especialidade</label><span>{{ estagio['especialidade'] }}</span></div>
-        <div class="info-item"><label>Cracha</label><span>{{ estagio['cracha'] or '-' }}</span></div>
+        <div class="info-item"><label>Crachá</label><span>{{ estagio['cracha'] or '-' }}</span></div>
         <div class="info-item"><label>Etapa Atual</label><span class="badge" style="background:#3b82f6;">{{ estagio['etapa'] }} - {{ etapa_nome }}</span></div>
-        <div class="info-item"><label>Mes/Ano</label><span>{{ estagio['mes_ano'] }}</span></div>
+        <div class="info-item"><label>Mês/Ano</label><span>{{ estagio['mes_ano'] }}</span></div>
         <div class="info-item"><label>Semana</label><span>{{ estagio['semana'] }}</span></div>
-        <div class="info-item"><label>Inicio</label><span>{{ estagio['inicio'] or '-' }}</span></div>
-        <div class="info-item"><label>Termino</label><span>{{ estagio['termino'] or '-' }}</span></div>
+        <div class="info-item"><label>Início</label><span>{{ estagio['inicio'] or '-' }}</span></div>
+        <div class="info-item"><label>Término</label><span>{{ estagio['termino'] or '-' }}</span></div>
         <div class="info-item"><label>Valor</label><span>R$ {{ "%.2f"|format(estagio['valor'] or 0) }}</span></div>
         <div class="info-item"><label>Status Pagto</label><span>{{ estagio['status_pagamento'] or '-' }}</span></div>
         <div class="info-item"><label>Forma Pagto</label><span>{{ estagio['forma_pagamento'] or '-' }}</span></div>
@@ -44,9 +44,9 @@
     <p style="font-size:12px;margin-bottom:16px;"><strong>Obs:</strong> {{ estagio['observacao'] }}</p>
     {% endif %}
 
-    <h2>Historico de Etapas</h2>
+    <h2>Histórico de Etapas</h2>
     <table>
-        <thead><tr><th>Etapa</th><th>Observacao</th><th>Responsavel</th><th>Data/Hora</th></tr></thead>
+        <thead><tr><th>Etapa</th><th>Observação</th><th>Responsável</th><th>Data/Hora</th></tr></thead>
         <tbody>
         {% for h in historico %}
         <tr>

@@ -29,29 +29,8 @@
 </head>
 <body>
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <h1>Estagios</h1>
-            <p class="subtitle">Santa Casa / UFCSPA</p>
-        </div>
-        <div class="sidebar-body">
-            <div class="sidebar-nav">
-                <a href="/dashboard" class="nav-link">Dashboard</a>
-                <a href="/" class="nav-link">Observership</a>
-                <a href="/residentes" class="nav-link active">Residentes</a>
-                <a href="/relatorios" class="nav-link">Relatorios</a>
-                <a href="/usuarios" class="nav-link">Usuarios</a>
-                <a href="/vagas" class="nav-link">Vagas</a>
-            </div>
-            <div class="sidebar-user" id="sidebar-user">
-                <strong>Carregando...</strong>
-                <span></span>
-            </div>
-            <div style="margin-top:8px;">
-                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
-            </div>
-        </div>
-    </aside>
+    {% set active_page = 'residentes' %}
+    {% include '_sidebar.html' %}
 
     <!-- Main -->
     <main class="main-content">
@@ -116,14 +95,14 @@
                         <th>Nome</th>
                         <th>Tipo</th>
                         <th>Especialidade</th>
-                        <th>Instituicao</th>
+                        <th>Instituição</th>
                         <th>Data Inscricao</th>
                         <th>Mes Desejado</th>
                         <th>Periodo Desejado</th>
-                        <th>Mes/Ano</th>
+                        <th>Mês/Ano</th>
                         <th>Status</th>
                         <th>Pagamento</th>
-                        <th style="width:90px;">Acoes</th>
+                        <th style="width:90px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-residentes"></tbody>
@@ -260,7 +239,7 @@
                         <input type="text" id="form-mes-desejado" placeholder="Ex: Janeiro 2026">
                     </div>
                     <div class="form-group full">
-                        <label>Observacao</label>
+                        <label>Observação</label>
                         <textarea id="form-obs"></textarea>
                     </div>
                 </div>
@@ -284,7 +263,7 @@
                     <thead>
                         <tr>
                             <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Status</th>
-                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Observacao</th>
+                            <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Observação</th>
                             <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Responsavel</th>
                             <th style="padding:6px 10px;text-align:left;font-size:12px;color:var(--color-text-secondary);border-bottom:1px solid var(--color-border);">Data</th>
                         </tr>

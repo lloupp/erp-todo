@@ -1,7 +1,9 @@
+# Versoes fixadas para reprodutibilidade em producao.
+# Python 3.12 (embeddable em C:\python312 no servidor Windows).
 flask==3.1.1
 flask-login==0.6.3
 flask-weasyprint==1.2.0
-openpyxl>=3.1
-gunicorn>=22.0
-waitress>=3.0
-python-dotenv>=1.0
+openpyxl==3.1.5
+gunicorn==26.0.0
+waitress==3.0.2
+python-dotenv==1.2.2

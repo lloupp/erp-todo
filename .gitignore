@@ -59,8 +59,16 @@ env/
 
 # Database
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+
+# Logs
+*.log
+
+# Backups
+backups/
 
 # Spreadsheets / data files
 *.xlsx

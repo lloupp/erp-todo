@@ -55,13 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Tema / sidebar ───────────────────────────────────────────
 function loadTheme() {
     const t = localStorage.getItem('theme') || 'light';
-    document.body.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', t);
 }
 
 function toggleTheme() {
-    const cur = document.body.getAttribute('data-theme') || 'light';
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
     const next = cur === 'light' ? 'dark' : 'light';
-    document.body.setAttribute('data-theme', next);
+    document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
 }
 

@@ -4,6 +4,15 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
+
+# Carrega .env o mais cedo possivel, antes de qualquer leitura de env var.
+# Cobre todos os pontos de entrada (waitress app:app, run_prod.py, sync_forms.py).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
+except ImportError:
+    pass
+
 from flask import Flask, render_template, request, jsonify, g, Response, redirect, url_for, flash, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_weasyprint import HTML
@@ -12,7 +21,53 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estagios.db'
 
 app = Flask(__name__)
 app.config['DATABASE'] = DB_PATH
-app.secret_key = os.environ.get('SECRET_KEY', 'chave-super-secreta-mude-em-producao')
+
+# SECRET_KEY: obrigatória em producao. Sem fallback inseguro hardcoded.
+# Em desenvolvimento (FLASK_DEBUG=1) usa uma chave efemera so para nao travar o dev.
+_secret = os.environ.get('SECRET_KEY')
+if not _secret:
+    if os.environ.get('FLASK_DEBUG') == '1':
+        _secret = os.urandom(32).hex()
+        print('[AVISO] SECRET_KEY ausente - usando chave efemera de desenvolvimento.')
+    else:
+        raise RuntimeError(
+            'SECRET_KEY nao definida. Defina a variavel de ambiente SECRET_KEY '
+            '(ex: no arquivo .env) antes de iniciar em producao.'
+        )
+app.secret_key = _secret
+
+# ── Logging estruturado com rotacao ──────────────────────────────
+# Grava em erp.log (5 MB x 5 arquivos). Essencial para auditoria/debug
+# em producao, ja que o stdout do Waitress pode se perder.
+import logging
+from logging.handlers import RotatingFileHandler
+
+_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'erp.log')
+_handler = RotatingFileHandler(_log_path, maxBytes=5 * 1024 * 1024, backupCount=5, encoding='utf-8')
+_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s [%(remote_addr)s %(user)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+
+class _RequestContextFilter(logging.Filter):
+    """Anexa IP e usuario logado a cada registro, quando houver request."""
+    def filter(self, record):
+        try:
+            record.remote_addr = request.remote_addr or '-'
+        except Exception:
+            record.remote_addr = '-'
+        try:
+            record.user = current_user.username if current_user.is_authenticated else '-'
+        except Exception:
+            record.user = '-'
+        return True
+
+
+_handler.addFilter(_RequestContextFilter())
+_handler.setLevel(logging.INFO)
+app.logger.addHandler(_handler)
+app.logger.setLevel(logging.INFO)
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
@@ -138,9 +193,14 @@ def load_user(user_id):
 # ── Database ──────────────────────────────────────────────────
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(app.config['DATABASE'])
+        g.db = sqlite3.connect(app.config['DATABASE'], timeout=10)
         g.db.row_factory = sqlite3.Row
         g.db.execute('PRAGMA foreign_keys = ON')
+        # WAL: permite leituras concorrentes com escrita; essencial com
+        # Waitress rodando multiplas threads sobre o mesmo arquivo SQLite.
+        g.db.execute('PRAGMA journal_mode = WAL')
+        g.db.execute('PRAGMA synchronous = NORMAL')
+        g.db.execute('PRAGMA busy_timeout = 5000')
     return g.db
 
 
@@ -328,10 +388,12 @@ def login_page():
             login_user(user)
             db.execute('UPDATE usuarios SET last_login=CURRENT_TIMESTAMP WHERE id=?', (user.id,))
             db.commit()
+            app.logger.info(f'Login OK: {username}')
             next_page = request.args.get('next', '/')
             if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
                 return jsonify({'ok': True, 'nome': user.nome, 'role': user.role})
             return redirect(next_page)
+        app.logger.warning(f'Login FALHOU: usuario="{username}"')
         if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
             return jsonify({'erro': 'Credenciais invalidas'}), 401
         return render_template('login.html', erro='Usuario ou senha invalidos'), 401
@@ -346,6 +408,17 @@ def logout():
 
 
 # ── Pages ─────────────────────────────────────────────────────
+@app.route('/health')
+def health():
+    """Health check sem autenticacao para monitoramento/auto-restart.
+    Verifica que o processo responde e o banco esta acessivel."""
+    try:
+        get_db().execute('SELECT 1')
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'detalhe': str(e)}), 503
+
+
 @app.route('/')
 @login_required
 def index():

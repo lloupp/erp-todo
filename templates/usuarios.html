@@ -3,40 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Usuarios - Estagios Medicos</title>
+    <title>Usuários - Estágios Médicos</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <h1>Estagios</h1>
-            <p class="subtitle">Santa Casa / UFCSPA</p>
-        </div>
-        <div class="sidebar-body">
-            <div class="sidebar-nav">
-                <a href="/dashboard" class="nav-link">Dashboard</a>
-                <a href="/" class="nav-link">Observership</a>
-                <a href="/residentes" class="nav-link">Residentes</a>
-                <a href="/relatorios" class="nav-link">Relatorios</a>
-                <a href="/usuarios" class="nav-link active">Usuarios</a>
-                <a href="/vagas" class="nav-link">Vagas</a>
-            </div>
-            <div class="sidebar-user" id="sidebar-user">
-                <strong>Carregando...</strong>
-                <span></span>
-            </div>
-            <div style="margin-top:8px;">
-                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
-            </div>
-        </div>
-    </aside>
+    {% set active_page = 'usuarios' %}
+    {% include '_sidebar.html' %}
 
     <!-- Main -->
     <main class="main-content">
         <div class="topbar">
             <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
-            <h2>Usuarios</h2>
+            <h2>Usuários</h2>
             <div class="topbar-right">
                 <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo Usuario</button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
@@ -52,7 +31,7 @@
                         <th>Nome</th>
                         <th>Papel</th>
                         <th>Ultimo Login</th>
-                        <th>Acoes</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-usuarios"></tbody>

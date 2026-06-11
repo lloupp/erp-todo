@@ -44,6 +44,23 @@ function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
 }
 
+/* ── Toast ────────────────────────────────── */
+// Assinatura booleana: showToast(msg, isErr). Verde = sucesso, vermelho = erro.
+function showToast(msg, isErr) {
+    let t = document.getElementById('_toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = '_toast';
+        t.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:.9rem;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:340px;box-shadow:0 4px 12px rgba(0,0,0,.2);';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.background = isErr ? '#ef4444' : '#22c55e';
+    t.style.opacity = '1';
+    clearTimeout(t._tid);
+    t._tid = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
 /* ── User Info ────────────────────────────── */
 async function loadUserInfo() {
     try {

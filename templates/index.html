@@ -3,41 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estagios Medicos - Santa Casa / UFCSPA</title>
+    <title>Estágios Médicos - Santa Casa / UFCSPA</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <h1>Estagios</h1>
-            <p class="subtitle">Santa Casa / UFCSPA</p>
-        </div>
-        <div class="sidebar-body">
-            <div class="sidebar-nav">
-                <a href="/dashboard" class="nav-link">Dashboard</a>
-                <a href="/" class="nav-link active">Observership</a>
-                <a href="/residentes" class="nav-link">Residentes</a>
-                <a href="/relatorios" class="nav-link">Relatorios</a>
-                <a href="/usuarios" class="nav-link" id="nav-usuarios" style="display:none;">Usuarios</a>
-                <a href="/vagas" class="nav-link" id="nav-vagas" style="display:none;">Vagas</a>
-            </div>
-            <div class="sidebar-user" id="sidebar-user">
-                <strong>Carregando...</strong>
-                <span></span>
-            </div>
-            <div style="margin-top:8px;">
-                <button class="btn btn-ghost" onclick="location.href='/logout'" style="width:100%;">Sair</button>
-            </div>
-        </div>
-    </aside>
+    {% set active_page = 'observership' %}
+    {% include '_sidebar.html' %}
 
     <!-- Main -->
     <main class="main-content">
         <!-- Topbar -->
         <div class="topbar">
             <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
-            <h2>Estagios</h2>
+            <h2>Observership</h2>
             <div class="topbar-right">
                 <select id="csv-separator" class="btn btn-sm" title="Separador CSV">
                     <option value=";">CSV ;</option>
@@ -69,7 +48,7 @@
                 <select id="filtro-especialidade"><option value="">Todas</option></select>
             </div>
             <div class="filter-group">
-                <label>Mes/Ano</label>
+                <label>Mês/Ano</label>
                 <select id="filtro-mes"><option value="">Todos</option></select>
             </div>
             <div class="filter-group">
@@ -111,13 +90,13 @@
                         <th>Nome</th>
                         <th>CPF</th>
                         <th>Especialidade</th>
-                        <th>Cracha</th>
-                        <th>Inicio</th>
-                        <th>Termino</th>
+                        <th>Crachá</th>
+                        <th>Início</th>
+                        <th>Término</th>
                         <th>Valor</th>
                         <th>Pagto</th>
                         <th>Etapa</th>
-                        <th>Acoes</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tbody"></tbody>
@@ -169,7 +148,7 @@
                         </datalist>
                     </div>
                     <div class="form-group">
-                        <label>Cracha</label>
+                        <label>Crachá</label>
                         <input type="text" id="form-cracha">
                     </div>
                     <div class="form-group">
@@ -222,7 +201,7 @@
                         <input type="number" id="form-carga-horaria" min="1" placeholder="Ex: 40">
                     </div>
                     <div class="form-group full">
-                        <label>Observacao</label>
+                        <label>Observação</label>
                         <textarea id="form-observacao"></textarea>
                     </div>
                 </div>
