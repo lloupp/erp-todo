@@ -6,9 +6,12 @@
     <div class="sidebar-body">
         <div class="sidebar-nav">
             <a href="/dashboard" class="nav-link{{ ' active' if active_page == 'dashboard' else '' }}">Dashboard</a>
-            <a href="/" class="nav-link{{ ' active' if active_page == 'observership' else '' }}">Observership</a>
             <a href="/residentes" class="nav-link{{ ' active' if active_page == 'residentes' else '' }}">Residentes</a>
             <a href="/relatorios" class="nav-link{{ ' active' if active_page == 'relatorios' else '' }}">Relatórios</a>
+            <a href="/" class="nav-link nav-link-secondary{{ ' active' if active_page == 'observership' else '' }}">
+                Observership
+                <span class="nav-link-note">e-commerce</span>
+            </a>
             <a href="/usuarios" class="nav-link{{ ' active' if active_page == 'usuarios' else '' }}" id="nav-usuarios" style="display:none;">Usuários</a>
             <a href="/vagas" class="nav-link{{ ' active' if active_page == 'vagas' else '' }}" id="nav-vagas" style="display:none;">Vagas</a>
         </div>

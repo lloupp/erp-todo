@@ -168,14 +168,18 @@ function filtrarPendencia(tipo) {
 
 /* ── Dropdowns ────────────────────────────── */
 async function loadTipos() {
-    const r = await fetch('/api/tipos');
-    const tipos = await r.json();
+    // Filtro: só tipos com pelo menos 1 registro (evita opções "mortas" na listagem).
+    // Formulário Novo/Editar: mantém todos os tipos, para não travar um cadastro futuro.
+    const [rFiltro, rForm] = await Promise.all([
+        fetch('/api/tipos?em_uso=1'),
+        fetch('/api/tipos'),
+    ]);
+    const tiposFiltro = await rFiltro.json();
+    const tiposForm = await rForm.json();
     const sel = document.getElementById('filtro-tipo');
     const formSel = document.getElementById('form-tipo');
-    tipos.forEach(t => {
-        sel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
-        formSel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
-    });
+    tiposFiltro.forEach(t => { sel.innerHTML += `<option value="${t.id}">${t.nome}</option>`; });
+    tiposForm.forEach(t => { formSel.innerHTML += `<option value="${t.id}">${t.nome}</option>`; });
 }
 
 async function loadFormasPagamento() {

@@ -392,7 +392,7 @@ def login_page():
             db.execute('UPDATE usuarios SET last_login=CURRENT_TIMESTAMP WHERE id=?', (user.id,))
             db.commit()
             app.logger.info(f'Login OK: {username}')
-            next_page = request.args.get('next', '/')
+            next_page = request.args.get('next', '/residentes')
             if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
                 return jsonify({'ok': True, 'nome': user.nome, 'role': user.role})
             return redirect(next_page)
@@ -782,7 +782,18 @@ def api_marcar_pago(estagio_id):
 @login_required
 def api_tipos():
     db = get_db()
-    rows = db.execute('SELECT * FROM tipo_estagio ORDER BY id').fetchall()
+    # ?em_uso=1 retorna apenas tipos com pelo menos 1 estagio cadastrado —
+    # usado para simplificar o filtro de listagem (evita mostrar tipos
+    # sem nenhum registro, ex: Obrigatorio/Optativo hoje nao utilizados
+    # no modulo Estagios; esse fluxo passou a acontecer via modulo Residentes).
+    if request.args.get('em_uso') == '1':
+        rows = db.execute('''
+            SELECT t.* FROM tipo_estagio t
+            WHERE EXISTS (SELECT 1 FROM estagios e WHERE e.tipo_id = t.id)
+            ORDER BY t.id
+        ''').fetchall()
+    else:
+        rows = db.execute('SELECT * FROM tipo_estagio ORDER BY id').fetchall()
     return jsonify([{'id': r['id'], 'nome': r['nome']} for r in rows])
 
 
