@@ -186,11 +186,15 @@ function fecharModal(id) { document.getElementById(id).classList.remove('open');
 // ─── Especialidades para filtro ───────────────────────────────
 async function loadEspecialidades() {
     try {
+        // Backend agrupa os textos livres da planilha do Forms sob a
+        // especialidade "oficial" mais parecida (mesma logica de
+        // melhorMatchAreaMedica), entao aqui recebemos poucas dezenas de
+        // grupos com contagem — não as ~290 variantes de texto livre.
         const data = await apiFetch('/api/residentes/especialidades');
         const sel = document.getElementById('f-especialidade');
-        (data || []).forEach(e => {
+        (data || []).forEach(g => {
             const o = document.createElement('option');
-            o.value = e; o.textContent = e;
+            o.value = g.grupo; o.textContent = `${g.grupo} (${g.total})`;
             sel.appendChild(o);
         });
     } catch (_) {}

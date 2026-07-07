@@ -4,6 +4,7 @@ import os
 import time
 import json
 import smtplib
+import unicodedata
 from email.mime.text import MIMEText
 from datetime import datetime
 
@@ -838,14 +839,86 @@ def api_especialidades():
     return jsonify([r['especialidade'] for r in rows])
 
 
+# ── Agrupamento "inteligente" de especialidades de Residentes ──────────
+# residentes.especialidade vem de texto livre (planilha do Forms preenchida
+# pelos proprios alunos) — muita gente escreve frases longas, com varias
+# opcoes ("Psiquiatria (1a opcao), neurocirurgia se nao houver..."), erros
+# de digitacao etc. Um <select> com as ~290 variantes distintas fica
+# gigante e inutil como filtro. Em vez disso, agrupamos cada texto livre
+# sob a especialidade "oficial" mais parecida da tabela area_medica (a
+# mesma lista de 67 especialidades ja usada no botao "Falar com a Area
+# Medica"), usando o mesmo algoritmo de score por palavras do front
+# (ver melhorMatchAreaMedica em residentes.js) — mantido igual aqui para
+# nao divergir os dois comportamentos.
+_STOPWORDS_ESP = {'e', 'de', 'do', 'da', 'dos', 'das', 'em', 'ou', 'a', 'o', 'para', 'geral'}
+
+
+def _normalizar_texto_especialidade(s):
+    s = unicodedata.normalize('NFD', s or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = s.lower()
+    s = re.sub(r'[^a-z0-9 ]', ' ', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+def _melhor_match_especialidade(texto_livre, canonicos_norm):
+    alvo = _normalizar_texto_especialidade(texto_livre)
+    if not alvo:
+        return None
+    palavras_alvo = [w for w in alvo.split(' ') if w and w not in _STOPWORDS_ESP]
+    melhor_idx, melhor_score = None, 0
+    for idx, cand in enumerate(canonicos_norm):
+        score = 0
+        if cand == alvo:
+            score += 100
+        elif alvo in cand or cand in alvo:
+            score += 20
+        for p in [w for w in cand.split(' ') if w and w not in _STOPWORDS_ESP]:
+            if p in palavras_alvo:
+                score += 3
+        if score > melhor_score:
+            melhor_score, melhor_idx = score, idx
+    return melhor_idx if melhor_score > 0 else None
+
+
+GRUPO_ESPECIALIDADE_OUTRAS = 'Outras / não identificado'
+
+
+def _agrupar_especialidades_residentes(db):
+    """Retorna (grupos, outras): grupos = {nome_canonico: [textos_livres...]},
+    outras = [textos_livres sem match razoavel]. Recalcula a cada chamada —
+    o volume de dados (centenas de linhas) torna isso barato o suficiente."""
+    canonicos = [r['especialidade'] for r in db.execute(
+        'SELECT DISTINCT especialidade FROM area_medica ORDER BY especialidade'
+    ).fetchall()]
+    canonicos_norm = [_normalizar_texto_especialidade(c) for c in canonicos]
+
+    raws = [r['especialidade'] for r in db.execute(
+        "SELECT DISTINCT especialidade FROM residentes WHERE especialidade IS NOT NULL AND especialidade != ''"
+    ).fetchall()]
+
+    grupos = {}
+    outras = []
+    for raw in raws:
+        idx = _melhor_match_especialidade(raw, canonicos_norm) if canonicos_norm else None
+        if idx is not None:
+            grupos.setdefault(canonicos[idx], []).append(raw)
+        else:
+            outras.append(raw)
+    return grupos, outras
+
+
 @app.route('/api/residentes/especialidades', methods=['GET'])
 @login_required
 def api_residentes_especialidades():
     db = get_db()
-    rows = db.execute(
-        "SELECT DISTINCT especialidade FROM residentes WHERE especialidade IS NOT NULL AND especialidade != '' ORDER BY especialidade"
-    ).fetchall()
-    return jsonify([r['especialidade'] for r in rows])
+    grupos, outras = _agrupar_especialidades_residentes(db)
+    resultado = [{'grupo': nome, 'total': len(vals)} for nome, vals in grupos.items()]
+    resultado.sort(key=lambda x: x['grupo'])
+    if outras:
+        resultado.append({'grupo': GRUPO_ESPECIALIDADE_OUTRAS, 'total': len(outras)})
+    return jsonify(resultado)
 
 
 @app.route('/api/meses', methods=['GET'])
@@ -1893,7 +1966,21 @@ def api_get_residentes():
     if modalidade:
         conds.append('modalidade=?'); params.append(modalidade)
     if especialidade:
-        conds.append('especialidade=?'); params.append(especialidade)
+        # especialidade e' texto livre (planilha do Forms); o filtro recebe o
+        # nome do GRUPO (ver /api/residentes/especialidades) e precisamos
+        # expandir para todas as variantes de texto livre que casam com ele.
+        grupos, outras = _agrupar_especialidades_residentes(db)
+        if especialidade == GRUPO_ESPECIALIDADE_OUTRAS:
+            raw_vals = outras
+        else:
+            raw_vals = grupos.get(especialidade, [])
+        if raw_vals:
+            conds.append(f"especialidade IN ({','.join('?' * len(raw_vals))})")
+            params.extend(raw_vals)
+        else:
+            # Fallback (ex: chamada direta da API com um valor exato) —
+            # mantem o comportamento antigo de match exato.
+            conds.append('especialidade=?'); params.append(especialidade)
     if mes_ano:
         conds.append('mes_ano=?'); params.append(mes_ano)
     if status:
@@ -2085,7 +2172,16 @@ def api_exportar_residentes_csv():
     if modalidade:
         conds.append('modalidade=?'); params.append(modalidade)
     if especialidade:
-        conds.append('especialidade=?'); params.append(especialidade)
+        grupos, outras = _agrupar_especialidades_residentes(db)
+        if especialidade == GRUPO_ESPECIALIDADE_OUTRAS:
+            raw_vals = outras
+        else:
+            raw_vals = grupos.get(especialidade, [])
+        if raw_vals:
+            conds.append(f"especialidade IN ({','.join('?' * len(raw_vals))})")
+            params.extend(raw_vals)
+        else:
+            conds.append('especialidade=?'); params.append(especialidade)
     if mes_ano:
         conds.append('mes_ano=?'); params.append(mes_ano)
     if status:
