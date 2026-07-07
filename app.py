@@ -838,6 +838,16 @@ def api_especialidades():
     return jsonify([r['especialidade'] for r in rows])
 
 
+@app.route('/api/residentes/especialidades', methods=['GET'])
+@login_required
+def api_residentes_especialidades():
+    db = get_db()
+    rows = db.execute(
+        "SELECT DISTINCT especialidade FROM residentes WHERE especialidade IS NOT NULL AND especialidade != '' ORDER BY especialidade"
+    ).fetchall()
+    return jsonify([r['especialidade'] for r in rows])
+
+
 @app.route('/api/meses', methods=['GET'])
 @login_required
 def api_meses():

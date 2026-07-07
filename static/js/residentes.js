@@ -186,9 +186,9 @@ function fecharModal(id) { document.getElementById(id).classList.remove('open');
 // ─── Especialidades para filtro ───────────────────────────────
 async function loadEspecialidades() {
     try {
-        const data = await apiFetch('/api/especialidades');
+        const data = await apiFetch('/api/residentes/especialidades');
         const sel = document.getElementById('f-especialidade');
-        (data.especialidades || []).forEach(e => {
+        (data || []).forEach(e => {
             const o = document.createElement('option');
             o.value = e; o.textContent = e;
             sel.appendChild(o);
@@ -387,6 +387,14 @@ function whatsappLinkDireto(celular, mensagem) {
 function debounceLoad() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => { currentPage = 1; loadResidentes(); }, 300);
+}
+
+// Usado pelos <select> de filtro: sempre volta pra página 1, senão o filtro
+// pode "não parecer funcionar" (continua pedindo a página em que o usuário
+// estava, que pode não existir mais no resultado filtrado).
+function aplicarFiltro() {
+    currentPage = 1;
+    loadResidentes();
 }
 
 // ─── Carregar lista ───────────────────────────────────────────
