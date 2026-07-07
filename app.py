@@ -1049,9 +1049,9 @@ def api_ai_insights():
         pedido = {
             'role': 'user',
             'content': (
-                'Faça um resumo executivo curto da situação atual (estágios e '
-                'residentes). Destaque o que precisa de atenção: estágios críticos/em '
-                'alerta, pagamentos pendentes e gargalos por etapa/status. '
+                'Faça um resumo executivo curto da situação atual de Residentes & '
+                'Doutorandos. Destaque o que precisa de atenção: novas inscrições '
+                '(Interessado), pagamentos pendentes e gargalos por status. '
                 'Use no máximo 8 linhas, em tópicos.'
             ),
         }

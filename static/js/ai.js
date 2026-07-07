@@ -110,7 +110,7 @@
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (p) {
                 if (!p) return;
-                var total = (p.criticos || 0) + (p.alertas || 0) + (p.pag_pendente || 0) + (p.res_pag_pendente || 0);
+                var total = (p.res_pag_pendente || 0);
                 setBadge(total);
             })
             .catch(function () { });
@@ -126,8 +126,8 @@
             var box = document.getElementById('ai-msgs');
             if (box && !box.childElementCount) {
                 addMsg('assistant',
-                    'Olá! Sou o assistente do ERP. Posso responder sobre estágios e '
-                    + 'residentes (contagens, pendências, pagamentos, etapas). '
+                    'Olá! Sou o assistente do ERP. Posso responder sobre Residentes & '
+                    + 'Doutorandos (inscrições, status, pendências, pagamentos). '
                     + 'Pergunte algo ou clique em **Resumo da situação**.');
             }
             var inp = document.getElementById('ai-input');
