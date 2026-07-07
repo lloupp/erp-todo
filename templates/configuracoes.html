@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações - Estágios Médicos</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .config-tabs { display:flex; gap:4px; padding:0 24px; border-bottom:1px solid var(--color-border); }
+        .config-tab { padding:10px 16px; border:none; background:none; cursor:pointer; font-size:13px; font-weight:600; color:var(--color-text-secondary); border-bottom:2px solid transparent; }
+        .config-tab.active { color:var(--color-primary); border-bottom-color:var(--color-primary); }
+        .config-panel { display:none; padding:20px 24px; }
+        .config-panel.active { display:block; }
+        .template-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius); padding:16px; margin-bottom:16px; }
+        .template-card h3 { margin:0 0 4px; font-size:14px; }
+        .template-card .placeholders { font-size:11px; color:var(--color-text-secondary); margin-bottom:8px; }
+        .template-card textarea { width:100%; min-height:100px; resize:vertical; padding:10px; border:1px solid var(--color-border); border-radius:6px; background:var(--color-bg); color:var(--color-text); font-family:inherit; font-size:13px; margin-bottom:8px; }
+        code.ph { background:var(--color-surface-hover); padding:1px 5px; border-radius:4px; font-size:11px; }
+        .am-filtro { padding:0 24px 12px; }
+        .am-filtro input { width:100%; max-width:320px; height:36px; padding:0 10px; border:1px solid var(--color-border); border-radius:6px; background:var(--color-surface); color:var(--color-text); font-size:13px; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    {% set active_page = 'configuracoes' %}
+    {% include '_sidebar.html' %}
+
+    <!-- Main -->
+    <main class="main-content">
+        <div class="topbar">
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+            <h2>Configurações</h2>
+            <div class="topbar-right">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
+            </div>
+        </div>
+
+        <div class="config-tabs">
+            <button class="config-tab active" data-tab="mensagens" onclick="mudarTab('mensagens')">Modelos de Mensagem</button>
+            <button class="config-tab" data-tab="area-medica" onclick="mudarTab('area-medica')">Contatos da Área Médica</button>
+        </div>
+
+        <!-- ═══ TAB: Modelos de Mensagem ═══ -->
+        <div class="config-panel active" id="panel-mensagens">
+            <p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:16px;">
+                Estes textos são usados pelos botões de WhatsApp na tela de Residentes. Use os campos entre
+                <code class="ph">{{ '{{' }}chave{{ '}}' }}</code> — eles são substituídos automaticamente pelos dados de cada registro na hora de enviar.
+            </p>
+            <div id="lista-templates"></div>
+        </div>
+
+        <!-- ═══ TAB: Contatos da Área Médica ═══ -->
+        <div class="config-panel" id="panel-area-medica">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                <input type="search" id="am-busca" placeholder="Buscar especialidade ou nome..." oninput="renderContatos()" style="height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);font-size:13px;min-width:260px;">
+                <button class="btn btn-sm btn-primary" onclick="abrirModalContato()">+ Novo Contato</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Especialidade</th>
+                            <th>Referência</th>
+                            <th>Celular</th>
+                            <th>E-mail</th>
+                            <th style="width:90px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-contatos"></tbody>
+                </table>
+                <div id="am-empty" class="empty-state" style="display:none;">Nenhum contato encontrado.</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ═══ MODAL: Novo/Editar Contato ═══ -->
+    <div class="modal-overlay" id="modal-contato">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header">
+                <h3 id="contato-modal-titulo">Novo Contato</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-contato')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="contato-id">
+                <div class="form-group">
+                    <label>Especialidade *</label>
+                    <input type="text" id="contato-especialidade" placeholder="Ex: Cirurgia Geral">
+                </div>
+                <div class="form-group">
+                    <label>Nome (chefe de serviço / referência)</label>
+                    <input type="text" id="contato-nome">
+                </div>
+                <div class="form-group">
+                    <label>Celular / WhatsApp</label>
+                    <input type="text" id="contato-celular" placeholder="(51) 99999-9999">
+                </div>
+                <div class="form-group">
+                    <label>E-mail</label>
+                    <input type="email" id="contato-email">
+                </div>
+                <div class="form-group">
+                    <label>Observação — Internato</label>
+                    <input type="text" id="contato-obs-internato" placeholder="Ex: 4 vagas total do serviço">
+                </div>
+                <div class="form-group">
+                    <label>Observação — Residência</label>
+                    <input type="text" id="contato-obs-residencia" placeholder="Ex: Somente mediante solicitação">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-contato')">Cancelar</button>
+                <button class="btn btn-primary" onclick="salvarContato()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MODAL: Confirmar Exclusão ═══ -->
+    <div class="modal-overlay" id="modal-confirmar-contato">
+        <div class="modal" style="max-width:400px;">
+            <div class="modal-header">
+                <h3>Confirmar Exclusão</h3>
+                <button class="btn-icon" onclick="fecharModal('modal-confirmar-contato')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="msg-confirmar-contato">Deseja realmente excluir este contato?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="fecharModal('modal-confirmar-contato')">Cancelar</button>
+                <button class="btn btn-danger" id="btn-confirmar-excluir-contato">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;"></div>
+
+    <script src="/static/js/configuracoes.js?v={{ range(1,99999)|random }}"></script>
+</body>
+</html>

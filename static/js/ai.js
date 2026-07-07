@@ -1,4 +1,4 @@
-/* Assistente IA (NVIDIA) — botão flutuante global.
+/* Assistente IA (OpenRouter) — botão flutuante global.
    Self-contained: injeta FAB + painel de chat em qualquer página que inclua
    a sidebar. Só aparece se /api/ai/status retornar {enabled:true}. */
 (function () {
@@ -94,12 +94,35 @@
             });
     }
 
+    function setBadge(n) {
+        var b = document.getElementById('ai-badge');
+        if (!b) return;
+        if (n > 0) {
+            b.textContent = n > 99 ? '99+' : String(n);
+            b.style.display = 'block';
+        } else {
+            b.style.display = 'none';
+        }
+    }
+
+    function atualizarBadge() {
+        fetch('/api/pendencias')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (p) {
+                if (!p) return;
+                var total = (p.criticos || 0) + (p.alertas || 0) + (p.pag_pendente || 0) + (p.res_pag_pendente || 0);
+                setBadge(total);
+            })
+            .catch(function () { });
+    }
+
     function togglePainel() {
         var p = document.getElementById('ai-panel');
         if (!p) return;
         var abrir = p.style.display === 'none' || !p.style.display;
         p.style.display = abrir ? 'flex' : 'none';
         if (abrir) {
+            atualizarBadge();
             var box = document.getElementById('ai-msgs');
             if (box && !box.childElementCount) {
                 addMsg('assistant',
@@ -115,6 +138,8 @@
     function montarUI() {
         var fab = el('button', { id: 'ai-fab', title: 'Assistente IA' }, '🤖');
         fab.addEventListener('click', togglePainel);
+
+        var badge = el('div', { id: 'ai-badge' });
 
         var panel = el('div', { id: 'ai-panel' });
         panel.style.display = 'none';
@@ -134,6 +159,7 @@
             + '</div>';
 
         document.body.appendChild(fab);
+        document.body.appendChild(badge);
         document.body.appendChild(panel);
 
         document.getElementById('ai-close').addEventListener('click', togglePainel);
@@ -142,6 +168,9 @@
         document.getElementById('ai-input').addEventListener('keydown', function (ev) {
             if (ev.key === 'Enter') { ev.preventDefault(); enviar(); }
         });
+
+        atualizarBadge();
+        setInterval(atualizarBadge, 120000);
     }
 
     function init() {

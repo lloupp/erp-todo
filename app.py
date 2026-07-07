@@ -2,6 +2,7 @@ import re
 import sqlite3
 import os
 import time
+import json
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -18,7 +19,7 @@ from flask import Flask, render_template, request, jsonify, g, Response, redirec
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_weasyprint import HTML
 
-import ai  # assistente IA (NVIDIA NIM) — lê config de env em runtime
+import ai  # assistente IA (OpenRouter) — lê config de env em runtime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estagios.db')
 
@@ -130,6 +131,18 @@ STATUS_RESIDENTE_COLORS = {
     'Desistente':   '#9ca3af', 'Cancelado':    '#ef4444',
     'Nao veio':     '#374151',
 }
+
+MENSAGENS_MODELO_SEED = [
+    ('whatsapp_aluno', 'Mensagem ao Aluno (WhatsApp)',
+     'Olá {{nome}}, tudo bem?\n{{usuario}} aqui do Ensino e Pesquisa.',
+     'nome (nome do aluno), usuario (primeiro nome de quem esta enviando)'),
+    ('whatsapp_area_medica', 'Mensagem a Area Medica (WhatsApp)',
+     'Olá! Tudo bem?\nGostaria de verificar a disponibilidade de vaga para Estágio {{modalidade}} em '
+     '{{especialidade}} para o {{tipo}} {{nome}}, {{periodo}}.\nFico no aguardo do retorno. Muito obrigado!',
+     'nome (nome do aluno), tipo (residente/doutorando), modalidade (Optativo/Convenio), '
+     'especialidade (nome oficial do contato), periodo (frase ja formatada), '
+     'usuario (primeiro nome de quem esta enviando)'),
+]
 
 ITENS_POR_PAGINA = 15
 
@@ -332,6 +345,23 @@ def init_db():
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS area_medica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            especialidade TEXT NOT NULL,
+            nome TEXT,
+            celular TEXT,
+            email TEXT,
+            obs_internato TEXT,
+            obs_residencia TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS mensagens_modelo (
+            chave TEXT PRIMARY KEY,
+            titulo TEXT NOT NULL,
+            texto TEXT NOT NULL,
+            placeholders TEXT
+        );
+
         DELETE FROM historico_etapas;
         DELETE FROM notificacoes;
         DELETE FROM estagios;
@@ -352,6 +382,10 @@ def init_db():
                ('admin', admin_hash, 'Administrador', 'admin'))
     db.execute("INSERT INTO usuarios (username, password_hash, nome, role) VALUES (?, ?, ?, ?)",
                ('user', user_hash, 'Usuario', 'user'))
+    db.executemany(
+        'INSERT OR IGNORE INTO mensagens_modelo (chave, titulo, texto, placeholders) VALUES (?,?,?,?)',
+        MENSAGENS_MODELO_SEED
+    )
     db.commit()
 
     count = db.execute('SELECT COUNT(*) FROM estagios').fetchone()[0]
@@ -425,11 +459,10 @@ def health():
 @app.route('/')
 @login_required
 def index():
-    db = get_db()
-    especialidades = [r['especialidade'] for r in db.execute(
-        'SELECT especialidade FROM limite_especialidade ORDER BY especialidade COLLATE NOCASE'
-    ).fetchall()]
-    return render_template('index.html', especialidades=especialidades)
+    # Modulo Observership desativado no ERP: fluxo agora e gerenciado pela e-commerce.
+    # Dados historicos continuam no banco (usados por dashboard/relatorios/IA),
+    # mas a tela de CRUD nao fica mais acessivel via menu/URL.
+    return redirect('/residentes')
 
 
 @app.route('/dashboard')
@@ -825,175 +858,101 @@ def api_formas_pagamento():
 def api_dashboard():
     db = get_db()
     mes_filtro = request.args.get('mes_ano', '').strip()  # filtro opcional
+    where_mes = " WHERE mes_ano=?" if mes_filtro else ""
+    params_mes = [mes_filtro] if mes_filtro else []
 
-    def where_mes(alias='e'):
-        return f" AND {alias}.mes_ano = ?" if mes_filtro else ""
-    def params_mes():
-        return [mes_filtro] if mes_filtro else []
-
-    # ── Estágios ──
-    total = db.execute(
-        f'SELECT COUNT(*) FROM estagios e WHERE 1=1{where_mes()}', params_mes()
-    ).fetchone()[0]
-
-    by_tipo = db.execute(f'''
-        SELECT t.nome, COUNT(*) as cnt
-        FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
-        WHERE 1=1{where_mes()}
-        GROUP BY e.tipo_id ORDER BY cnt DESC
-    ''', params_mes()).fetchall()
-
-    by_etapa = db.execute(f'''
-        SELECT etapa, COUNT(*) as cnt FROM estagios e
-        WHERE 1=1{where_mes()}
-        GROUP BY etapa ORDER BY etapa
-    ''', params_mes()).fetchall()
-
-    by_especialidade = db.execute(f'''
-        SELECT especialidade, COUNT(*) as cnt FROM estagios e
-        WHERE 1=1{where_mes()}
-        GROUP BY especialidade ORDER BY cnt DESC LIMIT 15
-    ''', params_mes()).fetchall()
-
-    total_valor = db.execute(
-        f'SELECT COALESCE(SUM(valor),0) FROM estagios e WHERE 1=1{where_mes()}', params_mes()
-    ).fetchone()[0]
-    valor_pago = db.execute(
-        f"SELECT COALESCE(SUM(valor),0) FROM estagios e WHERE status_pagamento='Pago'{where_mes()}", params_mes()
-    ).fetchone()[0]
-
-    by_status_pag = db.execute(f'''
-        SELECT status_pagamento, COUNT(*) as cnt, COALESCE(SUM(valor),0) as total
-        FROM estagios e WHERE 1=1{where_mes()}
-        GROUP BY status_pagamento
-    ''', params_mes()).fetchall()
-
-    # Tendência mensal — últimos 18 meses (sem filtro de mês, sempre geral)
-    by_mes = db.execute('''
-        SELECT mes_ano, COUNT(*) as cnt, COALESCE(SUM(valor),0) as total
-        FROM estagios GROUP BY mes_ano ORDER BY mes_ano DESC LIMIT 18
-    ''').fetchall()
-
-    # KPIs de alerta (estágios Observership)
-    kpis_estagio = db.execute(f'''
-        SELECT
-            COUNT(*) FILTER (WHERE etapa < 7) AS ativos,
-            COUNT(*) FILTER (WHERE etapa = 7) AS concluidos,
-            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 14) AS criticos,
-            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 7 AND dias <= 14) AS alertas,
-            COUNT(*) FILTER (WHERE status_pagamento = "Pendente" AND etapa < 7) AS pag_pendente
-        FROM (
-            SELECT e.etapa, e.status_pagamento,
-                CAST(julianday("now") - julianday(COALESCE(
-                    (SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id = e.id),
-                    e.updated_at, e.created_at)) AS INTEGER) AS dias
-            FROM estagios e WHERE e.tipo_id = 1{where_mes()}
-        )
-    ''', params_mes()).fetchone()
-
-    recent = db.execute(f'''
-        SELECT e.id, e.nome, e.etapa, e.updated_at, t.nome as tipo_nome, e.especialidade, e.status_pagamento
-        FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
-        WHERE 1=1{where_mes()}
-        ORDER BY e.updated_at DESC LIMIT 8
-    ''', params_mes()).fetchall()
-
-    # ── Residentes ──
+    # ── Residentes & Doutorandos (unico foco do dashboard) ──
     res_total = db.execute(
-        "SELECT COUNT(*) FROM residentes" + (" WHERE mes_ano=?" if mes_filtro else ""),
-        params_mes()
+        f"SELECT COUNT(*) FROM residentes{where_mes}", params_mes
     ).fetchone()[0]
 
     res_por_status = db.execute(
-        f"SELECT status, COUNT(*) as cnt FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''} "
-        f"GROUP BY status ORDER BY cnt DESC", params_mes()
+        f"SELECT status, COUNT(*) as cnt FROM residentes{where_mes} "
+        f"GROUP BY status ORDER BY cnt DESC", params_mes
     ).fetchall()
 
     res_por_tipo = db.execute(
         f"SELECT COALESCE(tipo,'N/A') as tipo, COUNT(*) as cnt FROM residentes"
-        f"{'  WHERE mes_ano=?' if mes_filtro else ''} GROUP BY tipo ORDER BY cnt DESC", params_mes()
+        f"{where_mes} GROUP BY tipo ORDER BY cnt DESC", params_mes
     ).fetchall()
 
     res_por_especialidade = db.execute(
         f"SELECT COALESCE(especialidade,'N/A') as esp, COUNT(*) as cnt FROM residentes"
-        f"{'  WHERE mes_ano=?' if mes_filtro else ''} GROUP BY especialidade ORDER BY cnt DESC LIMIT 15",
-        params_mes()
+        f"{where_mes} GROUP BY especialidade ORDER BY cnt DESC LIMIT 15", params_mes
     ).fetchall()
 
     res_financeiro = db.execute(
         f"SELECT COALESCE(SUM(valor),0) as total, "
         f"COALESCE(SUM(CASE WHEN status_pagamento='Pago' THEN valor ELSE 0 END),0) as pago "
-        f"FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''}", params_mes()
+        f"FROM residentes{where_mes}", params_mes
     ).fetchone()
 
+    # Tendência mensal — últimos 18 meses (sem filtro de mês, sempre geral)
     res_por_mes = db.execute('''
         SELECT mes_ano, COUNT(*) as cnt FROM residentes
         WHERE mes_ano IS NOT NULL AND mes_ano != ''
         GROUP BY mes_ano ORDER BY mes_ano DESC LIMIT 18
     ''').fetchall()
 
-    res_kpis = db.execute(
-        f"SELECT "
-        f"COUNT(*) FILTER (WHERE status='Interessado') as novos, "
-        f"COUNT(*) FILTER (WHERE status='Em andamento') as em_andamento, "
-        f"COUNT(*) FILTER (WHERE status='Deferido') as deferidos, "
-        f"COUNT(*) FILTER (WHERE status='Confirmado') as confirmados, "
-        f"COUNT(*) FILTER (WHERE status_pagamento='Pendente' "
-        f"  AND status NOT IN ('Cancelado','Indeferido','Desistente','Nao veio')) as pag_pendente "
-        f"FROM residentes{'  WHERE mes_ano=?' if mes_filtro else ''}", params_mes()
-    ).fetchone()
+    # KPIs de status + alertas de "dias parado" (mesma logica da badge da lista)
+    res_kpis = db.execute(f'''
+        SELECT
+            COUNT(*) FILTER (WHERE status='Interessado') as novos,
+            COUNT(*) FILTER (WHERE status='Em andamento') as em_andamento,
+            COUNT(*) FILTER (WHERE status='Deferido') as deferidos,
+            COUNT(*) FILTER (WHERE status='Confirmado') as confirmados,
+            COUNT(*) FILTER (WHERE status_pagamento='Pendente'
+                AND status NOT IN ('Cancelado','Indeferido','Desistente','Nao veio')) as pag_pendente,
+            COUNT(*) FILTER (WHERE status IN ('Interessado','Em andamento','Deferido') AND dias > 14) as criticos,
+            COUNT(*) FILTER (WHERE status IN ('Interessado','Em andamento','Deferido')
+                AND dias > 7 AND dias <= 14) as alertas
+        FROM (
+            SELECT r.status, r.status_pagamento,
+                CAST(julianday('now') - julianday(COALESCE(
+                    (SELECT MAX(h.ts) FROM historico_residentes h WHERE h.residente_id = r.id),
+                    r.updated_at, r.created_at)) AS INTEGER) AS dias
+            FROM residentes r{where_mes}
+        )
+    ''', params_mes).fetchone()
+
+    recent = db.execute(f'''
+        SELECT id, nome, status, tipo, especialidade, status_pagamento, updated_at
+        FROM residentes{where_mes}
+        ORDER BY updated_at DESC LIMIT 8
+    ''', params_mes).fetchall()
 
     # Lista de meses disponíveis para o filtro
     meses_disp = [r[0] for r in db.execute('''
-        SELECT DISTINCT mes_ano FROM (
-            SELECT mes_ano FROM estagios WHERE mes_ano IS NOT NULL
-            UNION SELECT mes_ano FROM residentes WHERE mes_ano IS NOT NULL AND mes_ano != ''
-        ) ORDER BY mes_ano DESC
+        SELECT DISTINCT mes_ano FROM residentes
+        WHERE mes_ano IS NOT NULL AND mes_ano != ''
+        ORDER BY mes_ano DESC
     ''').fetchall()]
 
     return jsonify({
-        # Estágios
-        'total_estagios': total,
-        'total_valor': total_valor,
-        'valor_pago': valor_pago,
-        'valor_pendente': (total_valor or 0) - (valor_pago or 0),
-        'por_tipo': [{'nome': r['nome'], 'count': r['cnt']} for r in by_tipo],
-        'por_etapa': [{'etapa': r['etapa'], 'count': r['cnt']} for r in by_etapa],
-        'por_especialidade': [{'nome': r['especialidade'], 'count': r['cnt']} for r in by_especialidade],
-        'por_status_pagamento': [{'status': r['status_pagamento'], 'count': r['cnt'], 'total': r['total']} for r in by_status_pag],
-        'por_mes': [{'mes_ano': r['mes_ano'], 'count': r['cnt'], 'total': r['total']} for r in by_mes],
-        'kpis_estagio': {
-            'ativos': kpis_estagio['ativos'] or 0,
-            'concluidos': kpis_estagio['concluidos'] or 0,
-            'criticos': kpis_estagio['criticos'] or 0,
-            'alertas': kpis_estagio['alertas'] or 0,
-            'pag_pendente': kpis_estagio['pag_pendente'] or 0,
+        'total': res_total,
+        'por_status': [{'status': r['status'], 'count': r['cnt']} for r in res_por_status],
+        'por_tipo': [{'tipo': r['tipo'], 'count': r['cnt']} for r in res_por_tipo],
+        'por_especialidade': [{'nome': r['esp'], 'count': r['cnt']} for r in res_por_especialidade],
+        'por_mes': [{'mes_ano': r['mes_ano'], 'count': r['cnt']} for r in res_por_mes],
+        'financeiro': {
+            'total': res_financeiro['total'] or 0,
+            'pago': res_financeiro['pago'] or 0,
+            'pendente': (res_financeiro['total'] or 0) - (res_financeiro['pago'] or 0),
+        },
+        'kpis': {
+            'novos': res_kpis['novos'] or 0,
+            'em_andamento': res_kpis['em_andamento'] or 0,
+            'deferidos': res_kpis['deferidos'] or 0,
+            'confirmados': res_kpis['confirmados'] or 0,
+            'pag_pendente': res_kpis['pag_pendente'] or 0,
+            'criticos': res_kpis['criticos'] or 0,
+            'alertas': res_kpis['alertas'] or 0,
         },
         'recentes': [{
-            'id': r['id'], 'nome': r['nome'], 'tipo_nome': r['tipo_nome'],
-            'especialidade': r['especialidade'], 'etapa': r['etapa'],
-            'status_pagamento': r['status_pagamento'], 'updated_at': r['updated_at']
+            'id': r['id'], 'nome': r['nome'], 'status': r['status'], 'tipo': r['tipo'],
+            'especialidade': r['especialidade'], 'status_pagamento': r['status_pagamento'],
+            'updated_at': r['updated_at']
         } for r in recent],
-        # Residentes
-        'residentes': {
-            'total': res_total,
-            'por_status': [{'status': r['status'], 'count': r['cnt']} for r in res_por_status],
-            'por_tipo': [{'tipo': r['tipo'], 'count': r['cnt']} for r in res_por_tipo],
-            'por_especialidade': [{'nome': r['esp'], 'count': r['cnt']} for r in res_por_especialidade],
-            'por_mes': [{'mes_ano': r['mes_ano'], 'count': r['cnt']} for r in res_por_mes],
-            'financeiro': {
-                'total': res_financeiro['total'] or 0,
-                'pago': res_financeiro['pago'] or 0,
-                'pendente': (res_financeiro['total'] or 0) - (res_financeiro['pago'] or 0),
-            },
-            'kpis': {
-                'novos': res_kpis['novos'] or 0,
-                'em_andamento': res_kpis['em_andamento'] or 0,
-                'deferidos': res_kpis['deferidos'] or 0,
-                'confirmados': res_kpis['confirmados'] or 0,
-                'pag_pendente': res_kpis['pag_pendente'] or 0,
-            },
-        },
         'meses_disponiveis': meses_disp,
         'mes_filtro': mes_filtro or None,
     })
@@ -1048,7 +1007,7 @@ def api_pendencias():
     })
 
 
-# ── API: Assistente IA (NVIDIA NIM) ───────────────────────────
+# ── API: Assistente IA (OpenRouter) ────────────────────────────
 @app.route('/api/ai/status', methods=['GET'])
 @login_required
 def api_ai_status():
@@ -1070,7 +1029,7 @@ def api_ai_chat():
         snapshot = ai.montar_snapshot(get_db())
         mensagens = ai.montar_mensagens(snapshot, historico)
         inicio = time.time()
-        resposta = ai.chamar_nvidia(mensagens)
+        resposta = ai.chamar_openrouter(mensagens)
         ms = int((time.time() - inicio) * 1000)
         ultima = (historico[-1].get('content') or '')[:120]
         app.logger.info(f'IA chat OK ({ms}ms): "{ultima}"')
@@ -1098,7 +1057,7 @@ def api_ai_insights():
         }
         mensagens = ai.montar_mensagens(snapshot, [pedido])
         inicio = time.time()
-        resumo = ai.chamar_nvidia(mensagens, temperature=0.2, max_tokens=700)
+        resumo = ai.chamar_openrouter(mensagens, temperature=0.2, max_tokens=2000)
         ms = int((time.time() - inicio) * 1000)
         app.logger.info(f'IA insights OK ({ms}ms)')
         return jsonify({'resumo': resumo})
@@ -1792,6 +1751,104 @@ def api_vagas_semana():
     } for r in rows])
 
 
+@app.route('/configuracoes')
+@login_required
+def pagina_configuracoes():
+    if current_user.role != 'admin':
+        return redirect(url_for('index'))
+    return render_template('configuracoes.html')
+
+
+# ── Contatos da Area Medica (chefes de servico por especialidade) ──
+@app.route('/api/area-medica', methods=['GET'])
+@login_required
+def api_area_medica():
+    db = get_db()
+    rows = db.execute('SELECT * FROM area_medica ORDER BY especialidade COLLATE NOCASE').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/area-medica', methods=['POST'])
+@login_required
+def api_area_medica_criar():
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    d = request.get_json() or {}
+    especialidade = (d.get('especialidade') or '').strip()
+    if not especialidade:
+        return jsonify({'erro': 'Especialidade e obrigatoria'}), 400
+    db = get_db()
+    cur = db.execute(
+        '''INSERT INTO area_medica (especialidade, nome, celular, email, obs_internato, obs_residencia)
+           VALUES (?,?,?,?,?,?)''',
+        (especialidade, d.get('nome', ''), d.get('celular', ''), d.get('email', ''),
+         d.get('obs_internato', ''), d.get('obs_residencia', ''))
+    )
+    db.commit()
+    return jsonify({'id': cur.lastrowid}), 201
+
+
+@app.route('/api/area-medica/<int:cid>', methods=['PUT'])
+@login_required
+def api_area_medica_editar(cid):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    if not get_db().execute('SELECT id FROM area_medica WHERE id=?', (cid,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    d = request.get_json() or {}
+    especialidade = (d.get('especialidade') or '').strip()
+    if not especialidade:
+        return jsonify({'erro': 'Especialidade e obrigatoria'}), 400
+    db = get_db()
+    db.execute(
+        '''UPDATE area_medica SET especialidade=?, nome=?, celular=?, email=?, obs_internato=?, obs_residencia=?
+           WHERE id=?''',
+        (especialidade, d.get('nome', ''), d.get('celular', ''), d.get('email', ''),
+         d.get('obs_internato', ''), d.get('obs_residencia', ''), cid)
+    )
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/area-medica/<int:cid>', methods=['DELETE'])
+@login_required
+def api_area_medica_excluir(cid):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    if not db.execute('SELECT id FROM area_medica WHERE id=?', (cid,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    db.execute('DELETE FROM area_medica WHERE id=?', (cid,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+# ── Modelos de mensagem (WhatsApp aluno / area medica) ──────────
+@app.route('/api/mensagens-modelo', methods=['GET'])
+@login_required
+def api_mensagens_modelo():
+    db = get_db()
+    rows = db.execute('SELECT * FROM mensagens_modelo ORDER BY chave').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/mensagens-modelo/<chave>', methods=['PUT'])
+@login_required
+def api_mensagens_modelo_editar(chave):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    if not db.execute('SELECT chave FROM mensagens_modelo WHERE chave=?', (chave,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    d = request.get_json() or {}
+    texto = (d.get('texto') or '').strip()
+    if not texto:
+        return jsonify({'erro': 'Texto e obrigatorio'}), 400
+    db.execute('UPDATE mensagens_modelo SET texto=? WHERE chave=?', (texto, chave))
+    db.commit()
+    return jsonify({'ok': True})
+
+
 # ── Residentes & Doutorandos ─────────────────────────────────
 
 @app.route('/residentes')
@@ -1816,6 +1873,7 @@ def api_get_residentes():
     status = request.args.get('status', '')
     status_pagamento = request.args.get('status_pagamento', '')
     busca = request.args.get('busca', '').strip()
+    ordenar = request.args.get('ordenar', 'mes_ano')
 
     conds = []
     params = []
@@ -1837,11 +1895,25 @@ def api_get_residentes():
         b = f'%{busca}%'
         params.extend([b, b, b, b, b, b, b])
 
+    ORDENACOES = {
+        'recentes': 'created_at DESC, id DESC',
+        'nome': 'nome COLLATE NOCASE',
+        'mes_ano': 'mes_ano DESC, nome',
+    }
+    order_sql = ORDENACOES.get(ordenar, ORDENACOES['mes_ano'])
+
     where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
     total = db.execute(f'SELECT COUNT(*) FROM residentes {where}', params).fetchone()[0]
     offset = (page - 1) * per_page
     rows = db.execute(
-        f'SELECT * FROM residentes {where} ORDER BY mes_ano DESC, nome LIMIT ? OFFSET ?',
+        f'''SELECT residentes.*,
+                CAST(julianday('now') - julianday(
+                    COALESCE(
+                        (SELECT MAX(h.ts) FROM historico_residentes h WHERE h.residente_id = residentes.id),
+                        residentes.updated_at, residentes.created_at
+                    )
+                ) AS INTEGER) as dias_no_status
+            FROM residentes {where} ORDER BY {order_sql} LIMIT ? OFFSET ?''',
         params + [per_page, offset]
     ).fetchall()
 
@@ -1945,6 +2017,29 @@ def api_avancar_residente(rid):
     )
     db.commit()
     return jsonify({'status': novo_status})
+
+
+@app.route('/api/residentes/<int:rid>/pdf')
+@login_required
+def api_residente_pdf(rid):
+    db = get_db()
+    row = db.execute('SELECT * FROM residentes WHERE id=?', (rid,)).fetchone()
+    if not row:
+        return jsonify({'erro': 'Nao encontrado'}), 404
+
+    historico = db.execute(
+        'SELECT * FROM historico_residentes WHERE residente_id=? ORDER BY ts', (rid,)
+    ).fetchall()
+
+    html = render_template('pdf_ficha_residente.html', r=row, historico=historico,
+                            data_geracao=datetime.now().strftime('%d/%m/%Y %H:%M'))
+    try:
+        pdf_bytes = HTML(string=html).write_pdf()
+        nome_arquivo = row['nome'].replace(' ', '_')[:40]
+        return Response(pdf_bytes, mimetype='application/pdf',
+                        headers={'Content-Disposition': f'attachment; filename=ficha_{nome_arquivo}.pdf'})
+    except Exception:
+        return html
 
 
 @app.route('/api/residentes/<int:rid>', methods=['DELETE'])
@@ -2305,6 +2400,40 @@ if __name__ == '__main__':
                           ('comprovante_pagamento', 'TEXT')]:
             if res_cols and col not in res_cols:
                 db.execute(f'ALTER TABLE residentes ADD COLUMN {col} {defn}')
+
+        # Contatos da area medica + modelos de mensagem (botoes WhatsApp de Residentes)
+        db.execute('''CREATE TABLE IF NOT EXISTS area_medica (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            especialidade TEXT NOT NULL,
+            nome TEXT,
+            celular TEXT,
+            email TEXT,
+            obs_internato TEXT,
+            obs_residencia TEXT
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS mensagens_modelo (
+            chave TEXT PRIMARY KEY,
+            titulo TEXT NOT NULL,
+            texto TEXT NOT NULL,
+            placeholders TEXT
+        )''')
+        db.executemany(
+            'INSERT OR IGNORE INTO mensagens_modelo (chave, titulo, texto, placeholders) VALUES (?,?,?,?)',
+            MENSAGENS_MODELO_SEED
+        )
+        # Seed inicial de area_medica a partir do JSON extraido do documento,
+        # apenas se a tabela ainda estiver vazia (edicoes ficam so no banco depois disso)
+        if db.execute('SELECT COUNT(*) FROM area_medica').fetchone()[0] == 0:
+            am_json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'area_medica.json')
+            if os.path.exists(am_json_path):
+                with open(am_json_path, encoding='utf-8') as f:
+                    contatos = json.load(f)
+                db.executemany(
+                    '''INSERT INTO area_medica (especialidade, nome, celular, email, obs_internato, obs_residencia)
+                       VALUES (?,?,?,?,?,?)''',
+                    [(c.get('especialidade'), c.get('nome'), c.get('celular'), c.get('email'),
+                      c.get('obs_internato'), c.get('obs_residencia')) for c in contatos]
+                )
 
         # Seed default admin if no users exist
         user_count = db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0]

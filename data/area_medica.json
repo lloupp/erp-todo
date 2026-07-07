@@ -1,0 +1,538 @@
+[
+  {
+    "especialidade": "Anestesiologia Geral",
+    "nome": "Liege Caroline Immich",
+    "celular": "(51) 995057144",
+    "email": "liegecimmich@gmail.com",
+    "obs_internato": "4 vagas total do serviço (2 manhã e 2 tarde)",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Anest. Pediátrica",
+    "nome": "Pedro Dutra",
+    "celular": "(51) 999670893",
+    "email": "",
+    "obs_internato": "",
+    "obs_residencia": "Somente residência - mediante solicitação"
+  },
+  {
+    "especialidade": "Anest. Neurocirurgia",
+    "nome": "João Batista Roth de Olievira",
+    "celular": "(51) 991151697",
+    "email": "",
+    "obs_internato": "",
+    "obs_residencia": "Somente R3 - mediante solicitação"
+  },
+  {
+    "especialidade": "Anest. Cir. Cardíaca",
+    "nome": "Waleska Lissa Dalprá",
+    "celular": "(51) 991127580",
+    "email": "",
+    "obs_internato": "",
+    "obs_residencia": "Somente R3 - mediante solicitação"
+  },
+  {
+    "especialidade": "Anest. Transp. Hepático",
+    "nome": "André Schmidt",
+    "celular": "(51) 996412212",
+    "email": "",
+    "obs_internato": "",
+    "obs_residencia": "Somente R3 - mediante solicitação"
+  },
+  {
+    "especialidade": "Arritimia Cardíaca - Eletrofisiologia",
+    "nome": "Carlos Antonio Abunader Kalil",
+    "celular": "(51) 999815080",
+    "email": "c.kalil@terra.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cardiologia Clínica",
+    "nome": "Paulo Ernesto Leães",
+    "celular": "(51) 981916364",
+    "email": "peleaes@gmail.com",
+    "obs_internato": "4 vagas",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cardiologia Pediátrica",
+    "nome": "Luisa Pigatto Kalil",
+    "celular": "(51) 999702801",
+    "email": "luisa.kalil@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": "Somente residência - mediante solicitação"
+  },
+  {
+    "especialidade": "Cirurgia Aparelho Digestivo",
+    "nome": "Angelica Maria Lucchese",
+    "celular": "(51) 991631138",
+    "email": "angelicaluc@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Bucomaxilofacial e Odontologia Hospitalar",
+    "nome": "Mauro Gomes Trein Leite",
+    "celular": "(51) 999818885",
+    "email": "mauro.leite@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Cabeça e Pescoço",
+    "nome": "Virgilio Gonzales Zanella",
+    "celular": "(51) 992168901",
+    "email": "drvirgilioccp@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Cardíaca Pediátrica",
+    "nome": "Paulo Roberto Lunardi Prates",
+    "celular": "(51) 996715651",
+    "email": "prprates@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Cardiovascular",
+    "nome": "Marcela da Cunha Sales",
+    "celular": "(51) 981662666",
+    "email": "mcsales001@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Geral",
+    "nome": "Mohamad Hassan Hamaoui",
+    "celular": "(55) 981189229",
+    "email": "mohamad.hamaoui@santacasa.org.br",
+    "obs_internato": "4 vagas UNISINOS + 3 vagas externas",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Oncológica",
+    "nome": "Tiago Auatt Paes Remonti",
+    "celular": "(51) 998491837",
+    "email": "tiago.remonti@santacasa.org.br",
+    "obs_internato": "3 vagas",
+    "obs_residencia": "1 residente"
+  },
+  {
+    "especialidade": "Cirurgia Pediátrica",
+    "nome": "Rafael Trindade Deyl",
+    "celular": "(51) 991177791",
+    "email": "rafaeldeyl@gmail.com",
+    "obs_internato": "1 vaga",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Cirurgia Plástica",
+    "nome": "Rodrigo Gravina Fadanelli",
+    "celular": "(51) 998363828",
+    "email": "rfadanelli@yahoo.com",
+    "obs_internato": "4 vagas total do serviço",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Robótica",
+    "nome": "André Vicente Bigolin",
+    "celular": "(51) 994326175",
+    "email": "andre.vicente@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Torácica",
+    "nome": "Spencer Marcantonio Camargo",
+    "celular": "(51) 999693204",
+    "email": "smcamargo@07@gmail.com",
+    "obs_internato": "2 vagas UNISINOS",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Torácica Pediátrica",
+    "nome": "Cristiano Feijó",
+    "celular": "(51) 997393215",
+    "email": "cristianofa@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cirurgia Vascular e Endovascular",
+    "nome": "Eduardo Lichtenfels",
+    "celular": "(51) 993538425",
+    "email": "elichtenfels@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Coloproctologia",
+    "nome": "Daniel de Barcellos Azambuja",
+    "celular": "(51) 999799948",
+    "email": "daniel.azambuja@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Cuidados Paliativos",
+    "nome": "João Luiz de Souza Hopf",
+    "celular": "(51) 993589185",
+    "email": "joao.hopf@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Dermatologia",
+    "nome": "Renan Rangel Bonamigo",
+    "celular": "(51)999682782",
+    "email": "rrbonamigo@gmail.com",
+    "obs_internato": "6 vagas externas",
+    "obs_residencia": "2 vagas externas"
+  },
+  {
+    "especialidade": "Dor",
+    "nome": "Luis Josino Brasil",
+    "celular": "(51) 991175081",
+    "email": "dr.luis.josino@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Emergência Adulto",
+    "nome": "Marcelo Fagundes",
+    "celular": "(51) 991085418",
+    "email": "marcelo.fagundes@santacasa.org.br",
+    "obs_internato": "3 vagas UNISINOS + 2 vagas externas",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Emergência Pediátrica",
+    "nome": "Aline Botta",
+    "celular": "(51) 999517150",
+    "email": "aline.botta@santacasa.org.br",
+    "obs_internato": "1 vaga (mediante solicitação)",
+    "obs_residencia": "1 vaga (mediante solicitação)"
+  },
+  {
+    "especialidade": "Endocrinologia",
+    "nome": "Carolina Garcia Soares Leães Rech",
+    "celular": "(51) 999510995",
+    "email": "carolina.leaes@santacasa.org.br",
+    "obs_internato": "1 vaga (2 se não houver residente)",
+    "obs_residencia": "3 adulto 1 pediátrico"
+  },
+  {
+    "especialidade": "Endoscopia",
+    "nome": "Julio Carlos Pereira Lima",
+    "celular": "(51) 999940641",
+    "email": "jpereiralima@terra.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Gastroenterologia",
+    "nome": "Gabriela Perdomo Coral",
+    "celular": "(51) 999018690",
+    "email": "g.coral@terra.com.br;",
+    "obs_internato": "1 vaga UNISINOS",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Gastroenterologia pediátrica",
+    "nome": "Cristina Helena Targa Ferreira",
+    "celular": "(51) 999680953",
+    "email": "targaferreira@gmail.com;",
+    "obs_internato": "1 vaga",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Geriatria",
+    "nome": "Virgílio da Rocha Olsen",
+    "celular": "(51) 993101128",
+    "email": "virgilio.olsen@gmail.com",
+    "obs_internato": "2 vagas",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Ginecologia e Obstetrícia",
+    "nome": "Carla Maria De Martini Vanin",
+    "celular": "(51) 999628061",
+    "email": "carlamvanin@gmail.com",
+    "obs_internato": "6 vagas UNISINOS + 4 vagas externas",
+    "obs_residencia": "Mediante solicitação"
+  },
+  {
+    "especialidade": "Hematologia",
+    "nome": "Tito Emilio Vanelli Costa",
+    "celular": "(51) 999841654",
+    "email": "tito.vanelli@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Hemodinâmica e Cardilogia Intervencionista",
+    "nome": "Valter Correia de Lima",
+    "celular": "(51) 995176564",
+    "email": "vlima@uol.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Infectologia",
+    "nome": "Alessandro Comaru Pasqualotto",
+    "celular": "(51) 999951614",
+    "email": "pasqualotto@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Infectologia Pediátrica",
+    "nome": "Fabrizio Motta",
+    "celular": "(51) 992129592",
+    "email": "fabrizio.motta@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Mastologia",
+    "nome": "Maria Cristina Barcellos Anselmi",
+    "celular": "(51) 984671133",
+    "email": "macbarcellos@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "UTI Adulto",
+    "nome": "Jorge Amilton Hoher",
+    "celular": "(51) 999637759",
+    "email": "jorgeamilton64@gmail.com",
+    "obs_internato": "1 vaga",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "UTI Pediátrica",
+    "nome": "Claudia Pires Ricachinevsky",
+    "celular": "(51) 999531797",
+    "email": "claudia.rica@santacasa.org.br",
+    "obs_internato": "3 vagas",
+    "obs_residencia": "Sem restrições"
+  },
+  {
+    "especialidade": "UTI Transplante",
+    "nome": "Roselaine Pinheiro de Oliveira",
+    "celular": "(51) 999856755",
+    "email": "roseuti@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": "Somente residente - 2 vagas externas Mediante solicitação"
+  },
+  {
+    "especialidade": "UTI Neurocirurgia",
+    "nome": "Patrícia Balzano",
+    "celular": "(51) 999579320",
+    "email": "patricia.balzano@santacasa.org.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "UTI Cardiologia",
+    "nome": "Eraldo de Azevedo Lucio",
+    "celular": "(51) 999872562",
+    "email": "ealucio@terra.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "UTI Pneumologia",
+    "nome": "Taiani Vargas",
+    "celular": "(51) 993245802",
+    "email": "taianivargas@hotmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Medicina Interna",
+    "nome": "Denusa Wiltgen",
+    "celular": "(51) 995177078",
+    "email": "denusa.wiltgen@santacasa.org.br",
+    "obs_internato": "5 vagas total do serviço (prioridade UNISINOS)",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Medicina Nuclear",
+    "nome": "Carlos Eduardo Anselmi",
+    "celular": "(51) 998053026",
+    "email": "anselmi@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Nefrologia",
+    "nome": "Elizete Keitel",
+    "celular": "(51)999330518",
+    "email": "keitel@ufcspa.edu.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Nefrologia Pediátrica",
+    "nome": "Clotilde Druck Garcia",
+    "celular": "(51) 999925636",
+    "email": "cdruckgarcia@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Neonatologia",
+    "nome": "Mauricio Obal Colvero",
+    "celular": "(51) 999781213",
+    "email": "mauricio.colvero@santacasa.org.br",
+    "obs_internato": "5 vagas PUCRS fixas (demais mediante solicitação)",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Neurocirurgia",
+    "nome": "Paulo Valdeci Worm",
+    "celular": "(51) 996714189",
+    "email": "paulo.worm@santacasa.org.br",
+    "obs_internato": "2 vagas",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Neurocirurgia Pediátrica",
+    "nome": "Jorge Wladimir Junqueira Bizzi",
+    "celular": "(51) 998778525",
+    "email": "jorgebizzi@terra.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Neurologia",
+    "nome": "Arlete Hilbig",
+    "celular": "(51) 999123916",
+    "email": "hilbiga@ufcspa.edu.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Neurorradiologia",
+    "nome": "Eduardo Raupp",
+    "celular": "(51) 998077659",
+    "email": "raupp.mail@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Oftalmologia",
+    "nome": "Alexandre Seminoti Marcon",
+    "celular": "(51) 999693262",
+    "email": "marcon@terra.com.br",
+    "obs_internato": "4 vagas totais + 1 observer",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Oncoginecologia",
+    "nome": "Rosilene Jara Reis",
+    "celular": "(51) 999982612",
+    "email": "rjreis@terra.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Oncologia Clínica",
+    "nome": "Rafael José Vargas Alves",
+    "celular": "(51) 999666007",
+    "email": "vargasrja@gmail.com",
+    "obs_internato": "2 vagas",
+    "obs_residencia": "1 vaga"
+  },
+  {
+    "especialidade": "Oncologia Pediátrica",
+    "nome": "Laura Borba",
+    "celular": "(51) 982177734",
+    "email": "",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Ortopedia e Traumatologia",
+    "nome": "Eduardo Pedrini Cruz",
+    "celular": "(51) 992168170",
+    "email": "pedrinicruz@gmail.com",
+    "obs_internato": "1 vaga brasileiro e 1 vaga estrangeiros (qualquer vínculo)",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Otorrinolaringologia",
+    "nome": "Geraldo Druck Sant'Anna",
+    "celular": "(51) 981225304",
+    "email": "geraldodruck@gmail.com",
+    "obs_internato": "3 vagas",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Patologia",
+    "nome": "Felipe Luzzatto",
+    "celular": "(51) 981141161",
+    "email": "fluzzatt@hotmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Pediatria",
+    "nome": "Raissa Queiroz Rezende",
+    "celular": "(51) 982206252",
+    "email": "raissaq@gmail.com",
+    "obs_internato": "2 vagas",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Pneumologia",
+    "nome": "Marcelo Nogueira",
+    "celular": "",
+    "email": "marfernog@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Pneumologia Pediátrica",
+    "nome": "Gilberto Bueno Fischer",
+    "celular": "(51) 999820975",
+    "email": "gbfinter@gmail.com",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Radiologia e Imagem",
+    "nome": "Rodrigo Miranda de Curtis",
+    "celular": "(51))991827090",
+    "email": "rodrigo.curtis@santacasa.org.br",
+    "obs_internato": "2 vagas total do serviço",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Radioterapia",
+    "nome": "Otávio Diaz",
+    "celular": "(51) 993343779",
+    "email": "otaviocdiaz@yahoo.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Reumatologia",
+    "nome": "Tatiana Freitas Tourinho",
+    "celular": "(51) 998264738",
+    "email": "tatiana.tourinho@yahoo.com.br",
+    "obs_internato": "",
+    "obs_residencia": ""
+  },
+  {
+    "especialidade": "Urologia",
+    "nome": "Ernani Luis Rhoden",
+    "celular": "(51) 999616891",
+    "email": "ernanirhoden@yahoo.com.br",
+    "obs_internato": "2 vagas total do serviço",
+    "obs_residencia": ""
+  }
+]

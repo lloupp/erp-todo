@@ -60,11 +60,25 @@ residentes(id, nome, email, telefone, cpf, tipo, modalidade, especialidade,
            comprovante_pagamento, observacao, data_inscricao, periodo_desejado,
            mes_desejado, created_at, updated_at)
 historico_residentes(id, residente_id, status, observacao, responsavel, ts)
+limite_especialidade(id, especialidade, limite_semanal)          -- limites semanais (módulo Vagas)
+area_medica(id, especialidade, nome, celular, email, obs_internato, obs_residencia)
+mensagens_modelo(id, chave, titulo, texto, placeholders)         -- templates de mensagem WhatsApp editáveis
 ```
 
-Módulo **Residentes & Doutorandos** (`/residentes`): público distinto dos estágios, com fluxo baseado em **status** (não etapas numeradas): Interessado → Em andamento → Deferido → Confirmado (+ Trocado, Indeferido, Desistente, Cancelado, Nao veio). Constantes `STATUS_RESIDENTE`, `STATUS_RESIDENTE_COLORS`, `TIPOS_RESIDENTE`, `MODALIDADES_RESIDENTE` em `app.py`. JS em `static/js/residentes.js`, template `residentes.html`.
+Módulo **Residentes & Doutorandos** (`/residentes`): público distinto dos estágios, com fluxo baseado em **status** (não etapas numeradas): Interessado → Em andamento → Deferido → Confirmado (+ Trocado, Indeferido, Desistente, Cancelado, Nao veio). Constantes `STATUS_RESIDENTE`, `STATUS_RESIDENTE_COLORS`, `TIPOS_RESIDENTE`, `MODALIDADES_RESIDENTE` em `app.py`. JS em `static/js/residentes.js`, template `residentes.html`. É o **módulo prioritário** do ERP (tela inicial padrão pós-login).
+
+- `ordenar` (`GET /api/residentes`): `recentes` (padrão no front, `created_at DESC`) | `nome` | `mes_ano`.
+- `dias_no_status`: campo calculado (subquery `julianday()` contra `historico_residentes`, mesmo padrão de `dias_na_etapa` do Observership) — badge ⚠ no front (7d/14d) só para status "em aberto" (`Interessado`, `Em andamento`, `Deferido`; ver `STATUS_PENDENTES` em `residentes.js`).
+- `GET /api/residentes/<id>/pdf`: ficha em PDF (WeasyPrint, `templates/pdf_ficha_residente.html`), mesmo padrão do PDF de estágio.
+- **Botão WhatsApp (aluno)**: por registro, usa `telefone` cadastrado, abre `wa.me` com saudação padrão.
+- **Botão Área Médica**: por registro, contata o chefe de serviço da especialidade (não o aluno). Contatos ficam na tabela `area_medica` (CRUD via `/api/area-medica`, admin-only para POST/PUT/DELETE); `data/area_medica.json` é usado só como seed inicial (`INSERT OR IGNORE`, uma vez, no bloco `__main__`) — para atualizar contatos em produção, editar pela tela de Configurações, não o JSON. O front (`residentes.js`) sugere automaticamente o contato mais provável comparando a especialidade em texto livre do formulário com a lista oficial (`melhorMatchAreaMedica`, scoring por palavras), mas **sempre abre um modal de confirmação** com select manual + mensagem editável antes de enviar — a especialidade digitada pelo candidato é texto livre não normalizado, então o match automático é só uma sugestão.
+- **Mensagens de template (WhatsApp)**: textos editáveis via tela de Configurações, tabela `mensagens_modelo` (chaves `whatsapp_aluno`, `whatsapp_area_medica`; seed em `MENSAGENS_MODELO_SEED` em `app.py`). Endpoints `GET /api/mensagens-modelo` e `PUT /api/mensagens-modelo/<chave>` (admin-only). Placeholders tipo `{{nome}}` são substituídos no client antes de abrir o `wa.me`.
 
 Migrações de schema são feitas inline no bloco `__main__` do `app.py` via `ALTER TABLE IF NOT EXISTS` — não há framework de migração.
+
+## Observership (desativado no ERP)
+
+O módulo Observership (`tipo_id=1` em `estagios`) é **gerenciado externamente pela e-commerce** e foi desativado no ERP: `/` redireciona para `/residentes`, e o link sumiu da sidebar (junto com "Vagas", que só existia para o limite semanal do Observership). **Os dados não foram apagados** — a tabela `estagios` e as rotas `/api/estagios*` continuam intactas e alimentam o Dashboard e o Assistente IA. Reativar exigiria restaurar a rota `/` (`app.py`) e o link na sidebar (`templates/_sidebar.html`).
 
 ## Produção (Windows)
 
@@ -75,11 +89,11 @@ Migrações de schema são feitas inline no bloco `__main__` do `app.py` via `AL
 - Logging: `erp.log` com `RotatingFileHandler` (5 MB × 5). Registra login OK/falho com IP e usuário.
 - Sync Microsoft Forms: `sync_forms.py` (Task horária) importa planilhas do OneDrive para a tabela `residentes`.
 
-## Assistente IA (NVIDIA NIM)
+## Assistente IA (OpenRouter)
 
 Botão flutuante global (FAB) presente em todas as telas via `templates/_sidebar.html`, que carrega `static/js/ai.js`. Backend em `ai.py` (módulo separado para não inchar `app.py`).
 
-- **Config (.env)**: `AI_ENABLED`, `NVIDIA_API_KEY`, `NVIDIA_MODEL` (default `meta/llama-3.3-70b-instruct`), `NVIDIA_BASE_URL` (default `https://integrate.api.nvidia.com/v1`). Sem chave, `ai.is_enabled()` é falso e o FAB não aparece.
+- **Config (.env)**: `AI_ENABLED`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default `tencent/hy3:free`, um modelo gratuito da OpenRouter), `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`). Sem chave, `ai.is_enabled()` é falso e o FAB não aparece.
 - **HTTP**: `urllib.request` da stdlib (sem nova dependência). Endpoint OpenAI-compatible `chat/completions`, `stream:false`.
 - **Segurança**: a IA **não gera nem executa SQL**. `ai.montar_snapshot(db)` pré-computa agregações read-only (reusa as queries de `/api/dashboard` e `/api/pendencias`) + listas de registros recentes. **Política de PII**: o snapshot inclui nome/especialidade/status, mas **nunca CPF, e-mail ou telefone**.
 - **Endpoints** (`@login_required`): `GET /api/ai/status` → `{enabled}`; `POST /api/ai/chat` (body `{messages:[...]}`, histórico limitado a 12); `GET /api/ai/insights` (resumo executivo). Erros viram `AIError` com mensagem amigável (HTTP 502).
@@ -111,10 +125,14 @@ Todos os endpoints exigem login (`@login_required`). Endpoints admin-only verifi
 - `GET /api/exportar-csv` — exportação CSV/TSV (mesmos filtros da lista, param `separador`)
 - `GET /api/dashboard` — stats agregadas para o dashboard
 - `POST /api/importar-excel` — importação de planilha; `confirmar=0` preview, `confirmar=1` grava
+- `GET /api/relatorios/exportar` — relatórios de re-contato (`relatorio=egressos|pendentes|parados|especialidade`, `preview=1` para JSON)
 - `GET /api/usuarios` — lista usuários (admin)
 - `POST /api/usuarios` — cria usuário (admin)
 - `PUT /api/usuarios/<id>` — edita usuário (admin)
 - `DELETE /api/usuarios/<id>` — remove usuário (admin)
+- `GET/POST/PUT/DELETE /api/limites` — limites semanais por especialidade, módulo **Vagas** (`/vagas`, admin-only, sem link na sidebar — acesso só por URL direta); `GET /api/vagas-semana?mes_ano=&semana=` calcula vagas usadas/livres
+- `GET/POST/PUT/DELETE /api/area-medica` — contatos de chefes de serviço por especialidade (tela **Configurações**, `/configuracoes`, admin-only)
+- `GET /api/mensagens-modelo`, `PUT /api/mensagens-modelo/<chave>` — templates de mensagem WhatsApp editáveis (tela Configurações, admin-only)
 
 ## Email Notifications
 

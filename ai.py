@@ -1,5 +1,5 @@
 """
-Assistente IA do ERP via NVIDIA NIM (OpenAI-compatible).
+Assistente IA do ERP via OpenRouter (OpenAI-compatible).
 
 Princípio de segurança:
 - A IA NUNCA gera nem executa SQL. O backend pré-computa um *snapshot* read-only
@@ -9,9 +9,9 @@ Princípio de segurança:
 
 Configuração via variaveis de ambiente (.env):
     AI_ENABLED=true
-    NVIDIA_API_KEY=<chave>
-    NVIDIA_MODEL=meta/llama-3.3-70b-instruct
-    NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+    OPENROUTER_API_KEY=<chave>
+    OPENROUTER_MODEL=tencent/hy3:free
+    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 """
 
 import os
@@ -24,7 +24,7 @@ import urllib.error
 def _enabled():
     return (
         os.environ.get('AI_ENABLED', 'false').lower() == 'true'
-        and bool(os.environ.get('NVIDIA_API_KEY', '').strip())
+        and bool(os.environ.get('OPENROUTER_API_KEY', '').strip())
     )
 
 
@@ -35,18 +35,23 @@ def is_enabled():
 
 def _config():
     return {
-        'api_key': os.environ.get('NVIDIA_API_KEY', '').strip(),
-        'model': os.environ.get('NVIDIA_MODEL', 'meta/llama-3.3-70b-instruct').strip(),
+        'api_key': os.environ.get('OPENROUTER_API_KEY', '').strip(),
+        'model': os.environ.get('OPENROUTER_MODEL', 'tencent/hy3:free').strip(),
         'base_url': os.environ.get(
-            'NVIDIA_BASE_URL', 'https://integrate.api.nvidia.com/v1'
+            'OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'
         ).strip().rstrip('/'),
     }
 
 
 SYSTEM_PROMPT = (
-    "Você é o assistente do ERP de estágios médicos da Santa Casa/UFCSPA. "
-    "Ajuda a equipe administrativa a entender a situação de estágios (Observership, "
-    "Obrigatório, Optativo) e de residentes/doutorandos.\n\n"
+    "Você é o assistente do ERP da Santa Casa/UFCSPA, focado no módulo de "
+    "Residentes & Doutorandos (o módulo ativo do sistema). Ajuda a equipe "
+    "administrativa a entender inscrições, status (Interessado, Em andamento, "
+    "Deferido, Confirmado, etc.), pagamentos e especialidades.\n\n"
+    "O antigo módulo de Estágios/Observership foi desativado neste ERP e é "
+    "gerenciado externamente por outro sistema — você NÃO tem esses dados e "
+    "não deve comentar sobre ele; se perguntarem, diga que esse módulo não é "
+    "mais gerenciado por aqui.\n\n"
     "REGRAS IMPORTANTES:\n"
     "- Responda SEMPRE em português do Brasil, de forma clara e objetiva.\n"
     "- Baseie-se EXCLUSIVAMENTE nos dados do SNAPSHOT fornecido abaixo. "
@@ -62,55 +67,14 @@ SYSTEM_PROMPT = (
 
 # ── Snapshot dos dados (sem PII) ──────────────────────────────
 def montar_snapshot(db):
-    """Monta um resumo estruturado dos dados, SEM CPF/e-mail/telefone.
+    """Monta um resumo estruturado dos dados de Residentes & Doutorandos, SEM CPF/e-mail/telefone.
 
-    Reaproveita as mesmas agregações de /api/dashboard e /api/pendencias.
-    Retorna um dict serializável em JSON.
+    O módulo de Estágios/Observership foi desativado no ERP (gerenciado externamente)
+    e por isso não entra no snapshot da IA. Reaproveita as mesmas agregações de
+    /api/dashboard e /api/pendencias. Retorna um dict serializável em JSON.
     """
     def rows(sql, params=()):
         return db.execute(sql, params).fetchall()
-
-    # ── Estágios: agregações ──
-    total_estagios = db.execute('SELECT COUNT(*) FROM estagios').fetchone()[0]
-
-    por_tipo = rows('''
-        SELECT t.nome AS nome, COUNT(*) AS cnt
-        FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
-        GROUP BY e.tipo_id ORDER BY cnt DESC
-    ''')
-    por_etapa = rows('SELECT etapa, COUNT(*) AS cnt FROM estagios GROUP BY etapa ORDER BY etapa')
-    por_especialidade = rows('''
-        SELECT especialidade, COUNT(*) AS cnt
-        FROM estagios GROUP BY especialidade ORDER BY cnt DESC LIMIT 20
-    ''')
-    por_status_pag = rows('''
-        SELECT status_pagamento, COUNT(*) AS cnt, COALESCE(SUM(valor),0) AS total
-        FROM estagios GROUP BY status_pagamento
-    ''')
-    por_mes = rows('''
-        SELECT mes_ano, COUNT(*) AS cnt, COALESCE(SUM(valor),0) AS total
-        FROM estagios GROUP BY mes_ano ORDER BY mes_ano DESC LIMIT 18
-    ''')
-    total_valor = db.execute('SELECT COALESCE(SUM(valor),0) FROM estagios').fetchone()[0]
-    valor_pago = db.execute(
-        "SELECT COALESCE(SUM(valor),0) FROM estagios WHERE status_pagamento='Pago'"
-    ).fetchone()[0]
-
-    # ── Pendências de estágios (Observership = tipo_id 1) ──
-    pend = db.execute('''
-        SELECT
-            COUNT(*) FILTER (WHERE etapa < 7) AS em_andamento,
-            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 14) AS criticos,
-            COUNT(*) FILTER (WHERE etapa < 7 AND dias > 7 AND dias <= 14) AS alertas,
-            COUNT(*) FILTER (WHERE status_pagamento='Pendente' AND etapa < 7) AS pag_pendente
-        FROM (
-            SELECT e.etapa, e.status_pagamento,
-                CAST(julianday('now') - julianday(COALESCE(
-                    (SELECT MAX(h.ts) FROM historico_etapas h WHERE h.estagio_id = e.id),
-                    e.updated_at, e.created_at)) AS INTEGER) AS dias
-            FROM estagios e WHERE e.tipo_id = 1
-        )
-    ''').fetchone()
 
     # ── Residentes & doutorandos: agregações ──
     total_res = db.execute('SELECT COUNT(*) FROM residentes').fetchone()[0]
@@ -137,11 +101,6 @@ def montar_snapshot(db):
     ''').fetchone()
 
     # ── Registros recentes (SEM PII: nome + tipo + especialidade + status/mes) ──
-    estagios_recentes = rows('''
-        SELECT e.nome, t.nome AS tipo, e.especialidade, e.etapa, e.mes_ano, e.status_pagamento
-        FROM estagios e JOIN tipo_estagio t ON e.tipo_id = t.id
-        ORDER BY e.updated_at DESC LIMIT 15
-    ''')
     res_recentes = rows('''
         SELECT nome, COALESCE(tipo,'') AS tipo, COALESCE(especialidade,'') AS especialidade,
                status, COALESCE(mes_ano,'') AS mes_ano
@@ -149,20 +108,6 @@ def montar_snapshot(db):
     ''')
 
     return {
-        'estagios': {
-            'total': total_estagios,
-            'por_tipo': [dict(r) for r in por_tipo],
-            'por_etapa': [{'etapa': r['etapa'], 'cnt': r['cnt']} for r in por_etapa],
-            'por_especialidade': [dict(r) for r in por_especialidade],
-            'por_status_pagamento': [dict(r) for r in por_status_pag],
-            'por_mes': [dict(r) for r in por_mes],
-            'financeiro': {
-                'total': total_valor, 'pago': valor_pago,
-                'pendente': (total_valor or 0) - (valor_pago or 0),
-            },
-            'pendencias_observership': dict(pend) if pend else {},
-            'recentes': [dict(r) for r in estagios_recentes],
-        },
         'residentes': {
             'total': total_res,
             'por_status': [dict(r) for r in res_por_status],
@@ -172,9 +117,10 @@ def montar_snapshot(db):
             'recentes': [dict(r) for r in res_recentes],
         },
         'observacoes': (
-            'Etapas de estágio vão de 0 a 7 (7 = concluído). '
-            'Observership é o tipo_id 1. As pendencias_observership referem-se apenas a '
-            'estágios do tipo Observership. Valores em R$.'
+            'Status possíveis: Interessado, Em andamento, Deferido, Confirmado, '
+            'Trocado, Indeferido, Desistente, Cancelado, Nao veio. '
+            'pendencias.novos/em_andamento/deferidos/confirmados contam por status atual. '
+            'pendencias.pag_pendente conta pagamentos pendentes (exclui status encerrados). Valores em R$.'
         ),
     }
 
@@ -186,13 +132,13 @@ def _snapshot_msg(snapshot):
     )
 
 
-# ── Chamada à API NVIDIA ──────────────────────────────────────
+# ── Chamada à API OpenRouter ───────────────────────────────────
 class AIError(Exception):
     pass
 
 
-def chamar_nvidia(messages, temperature=0.3, max_tokens=1024, timeout=60):
-    """Faz POST para o endpoint chat/completions da NVIDIA NIM.
+def chamar_openrouter(messages, temperature=0.3, max_tokens=2048, timeout=60):
+    """Faz POST para o endpoint chat/completions da OpenRouter.
 
     `messages`: lista [{role, content}]. Retorna o texto da resposta (str).
     Lança AIError com mensagem amigável em caso de falha.
@@ -214,6 +160,9 @@ def chamar_nvidia(messages, temperature=0.3, max_tokens=1024, timeout=60):
     req.add_header('Content-Type', 'application/json')
     req.add_header('Authorization', f"Bearer {cfg['api_key']}")
     req.add_header('Accept', 'application/json')
+    # Headers recomendados pela OpenRouter para atribuição/rankings (opcionais).
+    req.add_header('HTTP-Referer', 'https://github.com/erp-todo')
+    req.add_header('X-Title', 'ERP Estagios - Assistente IA')
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -225,19 +174,26 @@ def chamar_nvidia(messages, temperature=0.3, max_tokens=1024, timeout=60):
         except Exception:
             pass
         if e.code in (401, 403):
-            raise AIError('Chave de API da NVIDIA inválida ou sem permissão.')
+            raise AIError('Chave de API da OpenRouter inválida ou sem permissão.')
         if e.code == 429:
-            raise AIError('Limite de uso da API da NVIDIA atingido. Tente mais tarde.')
-        raise AIError(f'Erro da API da NVIDIA (HTTP {e.code}). {detalhe}')
+            raise AIError('Limite de uso da API da OpenRouter atingido. Tente mais tarde.')
+        raise AIError(f'Erro da API da OpenRouter (HTTP {e.code}). {detalhe}')
     except urllib.error.URLError as e:
-        raise AIError(f'Falha de conexão com a API da NVIDIA: {e.reason}')
+        raise AIError(f'Falha de conexão com a API da OpenRouter: {e.reason}')
     except Exception as e:
         raise AIError(f'Erro inesperado ao chamar a IA: {e}')
 
     try:
-        return body['choices'][0]['message']['content'].strip()
+        msg = body['choices'][0]['message']
     except (KeyError, IndexError, TypeError):
-        raise AIError('Resposta inesperada da API da NVIDIA.')
+        raise AIError('Resposta inesperada da API da OpenRouter.')
+
+    conteudo = msg.get('content')
+    if not conteudo:
+        # Modelos de raciocínio (como o hy3:free) podem gastar todo o max_tokens
+        # pensando internamente e nunca escrever a resposta final (finish_reason=length).
+        raise AIError('A IA ficou sem espaço de resposta antes de concluir. Tente novamente ou faça uma pergunta mais objetiva.')
+    return conteudo.strip()
 
 
 def montar_mensagens(snapshot, historico):

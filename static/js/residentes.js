@@ -8,6 +8,10 @@ let idExcluir = null;
 let debounceTimer = null;
 let previewNovos = [];
 let idAvancar = null;
+let residentesCache = {};   // id -> registro (ultima pagina carregada), usado pelo modal Area Medica
+let AREA_MEDICA = null;     // cache dos contatos de chefes de servico
+let MENSAGENS_MODELO = {};  // chave -> texto do modelo (editavel em /configuracoes)
+let USUARIO_LOGADO_NOME = '';
 
 const STATUS_FLOW = [
     'Interessado', 'Em andamento', 'Deferido', 'Confirmado'
@@ -29,11 +33,17 @@ const STATUS_COLORS = {
     'Nao veio':     '#374151',
 };
 
+// Status ainda "em aberto" — só esses geram alerta de dias parado
+// (Confirmado e demais são desfechos finais, não faz sentido alertar)
+const STATUS_PENDENTES = ['Interessado', 'Em andamento', 'Deferido'];
+
 // ─── Init ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadTheme();
-    loadUserInfo();
     loadEspecialidades();
+    // Nome do usuario logado e modelos de mensagem precisam estar prontos
+    // antes do primeiro render da tabela (usados nos botoes de WhatsApp).
+    await Promise.all([loadUserInfo(), carregarMensagensModelo()]);
     // Lê parâmetros da URL para pré-filtrar (vindo do banner de pendências)
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('status')) {
@@ -51,6 +61,21 @@ document.addEventListener('DOMContentLoaded', () => {
     loadResidentes();
     loadWelcomeBanner();
 });
+
+async function carregarMensagensModelo() {
+    try {
+        const lista = await apiFetch('/api/mensagens-modelo');
+        lista.forEach(t => { MENSAGENS_MODELO[t.chave] = t.texto; });
+    } catch (_) {}
+}
+
+// Substitui {{chave}} pelos valores informados. Chaves nao encontradas ficam
+// como estao (evita quebrar a mensagem se o admin remover um placeholder).
+function preencherTemplate(texto, valores) {
+    return (texto || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, chave) =>
+        Object.prototype.hasOwnProperty.call(valores, chave) ? valores[chave] : m
+    );
+}
 
 // ─── Tema / sidebar ───────────────────────────────────────────
 function loadTheme() {
@@ -127,6 +152,7 @@ async function loadUserInfo() {
         if (el && r.nome) {
             el.innerHTML = `<strong>${r.nome}</strong><span>${r.role}</span>`;
         }
+        USUARIO_LOGADO_NOME = (r.nome || '').trim().split(' ')[0];
     } catch (_) {}
 }
 
@@ -180,6 +206,7 @@ function getFiltros() {
     const mes   = document.getElementById('f-mes').value;
     const stat  = document.getElementById('f-status').value;
     const pag   = document.getElementById('f-pagamento').value;
+    const ord   = document.getElementById('f-ordenar').value;
     if (busca) p.busca = busca;
     if (tipo)  p.tipo  = tipo;
     if (mod)   p.modalidade = mod;
@@ -187,14 +214,174 @@ function getFiltros() {
     if (mes)   p.mes_ano = mes;
     if (stat)  p.status = stat;
     if (pag)   p.status_pagamento = pag;
+    p.ordenar = ord || 'recentes';
     return p;
 }
 
 function limparFiltros() {
     ['f-busca','f-mes'].forEach(id => document.getElementById(id).value = '');
     ['f-tipo','f-modalidade','f-especialidade','f-status','f-pagamento'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-ordenar').value = 'recentes';
     currentPage = 1;
     loadResidentes();
+}
+
+// ─── WhatsApp ─────────────────────────────────────────────────
+const TEMPLATE_ALUNO_FALLBACK = 'Olá {{nome}}, tudo bem?\n{{usuario}} aqui do Ensino e Pesquisa.';
+
+function whatsappLink(telefone, nome) {
+    if (!telefone) return null;
+    let digits = telefone.replace(/\D/g, '');
+    if (!digits) return null;
+    // Sem DDI (Brasil = 55): assume numero nacional (DDD + numero)
+    if (digits.length <= 11) digits = '55' + digits;
+    const primeiroNome = (nome || '').trim().split(' ')[0];
+    const template = MENSAGENS_MODELO.whatsapp_aluno || TEMPLATE_ALUNO_FALLBACK;
+    const texto = preencherTemplate(template, { nome: primeiroNome, usuario: USUARIO_LOGADO_NOME });
+    return `https://wa.me/${digits}?text=${encodeURIComponent(texto)}`;
+}
+
+// ─── Área Médica (falar com chefe de serviço da especialidade) ─
+async function carregarAreaMedica() {
+    if (AREA_MEDICA) return AREA_MEDICA;
+    try {
+        AREA_MEDICA = await apiFetch('/api/area-medica');
+    } catch (_) {
+        AREA_MEDICA = [];
+    }
+    return AREA_MEDICA;
+}
+
+function normalizarTexto(s) {
+    return (s || '').toString()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+const STOPWORDS_ESP = new Set(['e', 'de', 'do', 'da', 'dos', 'das', 'em', 'ou', 'a', 'o', 'para', 'geral']);
+
+// Sugere o contato mais provável comparando a especialidade (texto livre,
+// digitado pelo proprio candidato no formulario) com a lista oficial da
+// area medica. Nao e garantido — o usuario sempre confere/troca no modal.
+function melhorMatchAreaMedica(especialidadeResidente) {
+    if (!AREA_MEDICA || !AREA_MEDICA.length) return null;
+    const alvo = normalizarTexto(especialidadeResidente);
+    if (!alvo) return null;
+    const palavrasAlvo = alvo.split(' ').filter(w => w && !STOPWORDS_ESP.has(w));
+    let melhorIdx = null, melhorScore = 0;
+    AREA_MEDICA.forEach((c, idx) => {
+        const cand = normalizarTexto(c.especialidade);
+        let score = 0;
+        if (cand === alvo) score += 100;
+        else if (alvo.includes(cand) || cand.includes(alvo)) score += 20;
+        cand.split(' ').filter(w => w && !STOPWORDS_ESP.has(w)).forEach(p => {
+            if (palavrasAlvo.includes(p)) score += 3;
+        });
+        if (score > melhorScore) { melhorScore = score; melhorIdx = idx; }
+    });
+    return melhorScore > 0 ? melhorIdx : null;
+}
+
+function formatarDataBR(iso) {
+    if (!iso) return '';
+    const p = String(iso).split('T')[0].split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+
+const TEMPLATE_AREA_MEDICA_FALLBACK = 'Olá! Tudo bem?\nGostaria de verificar a disponibilidade de vaga para Estágio {{modalidade}} em {{especialidade}} para o {{tipo}} {{nome}}, {{periodo}}.\nFico no aguardo do retorno. Muito obrigado!';
+
+function montarMensagemAreaMedica(r, contato) {
+    const tipoLower = r.tipo === 'Doutorando' ? 'doutorando' : 'residente';
+    const modalidade = r.modalidade || 'Optativo';
+    let periodo;
+    if (r.inicio && r.termino) {
+        periodo = `no período de ${formatarDataBR(r.inicio)} a ${formatarDataBR(r.termino)}`;
+    } else if (r.periodo_desejado) {
+        periodo = `no período de ${r.periodo_desejado}`;
+    } else if (r.mes_desejado) {
+        periodo = `em ${r.mes_desejado}`;
+    } else {
+        periodo = `no mês ${(r.mes_ano || '').slice(0, 7)}`;
+    }
+    const template = MENSAGENS_MODELO.whatsapp_area_medica || TEMPLATE_AREA_MEDICA_FALLBACK;
+    return preencherTemplate(template, {
+        nome: r.nome,
+        tipo: tipoLower,
+        modalidade,
+        especialidade: contato.especialidade,
+        periodo,
+        usuario: USUARIO_LOGADO_NOME,
+    });
+}
+
+async function abrirModalAreaMedica(id) {
+    const r = residentesCache[id];
+    if (!r) return;
+    await carregarAreaMedica();
+    if (!AREA_MEDICA.length) {
+        showToast('Lista de contatos da área médica não carregada.', 'error');
+        return;
+    }
+
+    document.getElementById('am-aluno-nome').textContent = `${r.nome} (${r.tipo})`;
+    document.getElementById('am-esp-original').textContent = r.especialidade || '—';
+
+    const select = document.getElementById('am-select');
+    select.innerHTML = AREA_MEDICA.map((c, idx) =>
+        `<option value="${idx}">${esc(c.especialidade)} — ${esc(c.nome)}</option>`
+    ).join('');
+    select.dataset.residenteId = id;
+
+    const melhorIdx = melhorMatchAreaMedica(r.especialidade);
+    if (melhorIdx !== null) select.value = melhorIdx;
+
+    selecionarContatoAreaMedica();
+    abrirModal('modal-area-medica');
+}
+
+function selecionarContatoAreaMedica() {
+    const select = document.getElementById('am-select');
+    const id = parseInt(select.dataset.residenteId, 10);
+    const r = residentesCache[id];
+    const contato = AREA_MEDICA[parseInt(select.value, 10)];
+    if (!r || !contato) return;
+
+    const partes = [];
+    if (contato.celular) partes.push(`&#128241; ${esc(contato.celular)}`);
+    if (contato.email) partes.push(`&#9993; ${esc(contato.email)}`);
+    if (contato.obs_internato) partes.push(`Internato: ${esc(contato.obs_internato)}`);
+    if (contato.obs_residencia) partes.push(`Residência: ${esc(contato.obs_residencia)}`);
+    document.getElementById('am-contato-info').innerHTML =
+        partes.join('<br>') || 'Sem informações de contato cadastradas para esta especialidade.';
+
+    document.getElementById('am-mensagem').value = montarMensagemAreaMedica(r, contato);
+    atualizarLinkAreaMedica();
+}
+
+function atualizarLinkAreaMedica() {
+    const select = document.getElementById('am-select');
+    const contato = AREA_MEDICA[parseInt(select.value, 10)];
+    const mensagem = document.getElementById('am-mensagem').value;
+    const btn = document.getElementById('am-btn-whatsapp');
+    const link = contato ? whatsappLinkDireto(contato.celular, mensagem) : null;
+    if (link) {
+        btn.href = link;
+        btn.classList.remove('btn-disabled');
+    } else {
+        btn.href = 'javascript:void(0)';
+        btn.classList.add('btn-disabled');
+    }
+}
+
+function whatsappLinkDireto(celular, mensagem) {
+    if (!celular) return null;
+    let digits = celular.replace(/\D/g, '');
+    if (!digits) return null;
+    if (digits.length <= 11) digits = '55' + digits;
+    return `https://wa.me/${digits}?text=${encodeURIComponent(mensagem)}`;
 }
 
 function debounceLoad() {
@@ -216,6 +403,7 @@ async function loadResidentes() {
 function renderTabela(rows) {
     const tbody = document.getElementById('tabela-residentes');
     const empty = document.getElementById('empty-state');
+    rows.forEach(r => { residentesCache[r.id] = r; });
     if (!rows.length) {
         tbody.innerHTML = '';
         empty.style.display = 'block';
@@ -233,6 +421,14 @@ function renderTabela(rows) {
                     ? '<span class="badge-cancelado-pag">Cancelado</span>'
                     : '<span class="badge-pendente">Pendente</span>';
         const mesFormatado = r.mes_ano ? r.mes_ano.slice(0,7) : '—';
+
+        const dias = r.dias_no_status || 0;
+        const emAberto = STATUS_PENDENTES.includes(r.status);
+        const alertaCor = (emAberto && dias > 14) ? '#dc2626' : (emAberto && dias > 7) ? '#f59e0b' : null;
+        const alertaHtml = alertaCor
+            ? `<span title="${dias} dias sem mudar de status" style="color:${alertaCor};font-size:11px;font-weight:600;margin-left:4px;">&#9888; ${dias}d</span>`
+            : '';
+
         return `<tr>
             <td><strong>${esc(r.nome)}</strong><br><small style="color:var(--color-text-secondary)">${esc(r.email||'')} ${r.telefone?'· '+esc(r.telefone):''}</small></td>
             <td><span class="badge-tipo ${tipoCls}">${esc(r.tipo)}</span><br><small>${esc(r.modalidade||'')}</small></td>
@@ -242,12 +438,15 @@ function renderTabela(rows) {
             <td style="font-size:12px;">${esc(r.mes_desejado||'—')}</td>
             <td style="font-size:12px;">${esc(r.periodo_desejado||'—')}</td>
             <td>${mesFormatado}</td>
-            <td><span class="badge-status" style="background:${cor}">${esc(r.status)}</span></td>
+            <td><span class="badge-status" style="background:${cor}">${esc(r.status)}</span>${alertaHtml}</td>
             <td>${pagBadge}${r.valor?`<br><small>R$ ${Number(r.valor).toFixed(2)}</small>`:''}</td>
             <td style="white-space:nowrap;">
+                ${r.telefone ? `<a class="btn btn-sm btn-whatsapp" href="${whatsappLink(r.telefone, r.nome)}" target="_blank" rel="noopener" title="Contatar ${esc(r.nome)} via WhatsApp">&#128241;</a>` : ''}
+                <button class="btn btn-sm btn-area-medica" onclick="abrirModalAreaMedica(${r.id})" title="Falar com a Área Médica (chefe de serviço)">&#127973;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirHistorico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Historico">&#9776;</button>
                 ${proximoStatus(r.status) ? `<button class="btn btn-sm btn-primary" onclick="abrirModalAvancar(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}','${esc(r.status)}')" title="Avançar status">&#9654;</button>` : ''}
                 <button class="btn btn-sm btn-ghost" onclick="abrirModalEditar(${r.id})" title="Editar">&#9998;</button>
+                <a class="btn btn-sm btn-ghost" href="/api/residentes/${r.id}/pdf" target="_blank" title="Gerar PDF da ficha">&#128196;</a>
                 <button class="btn btn-sm btn-danger" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">&#128465;</button>
             </td>
         </tr>`;
