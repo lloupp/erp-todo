@@ -267,6 +267,18 @@ function normalizarTexto(s) {
 
 const STOPWORDS_ESP = new Set(['e', 'de', 'do', 'da', 'dos', 'das', 'em', 'ou', 'a', 'o', 'para', 'geral']);
 
+// Termos equivalentes na nomenclatura medica brasileira sem sobreposicao de
+// palavras com o nome oficial (ex: "Clínica Médica" = "Medicina Interna").
+// Mesma lista usada no backend (_SINONIMOS_ESPECIALIDADE em app.py) — manter
+// as duas em sincronia.
+const SINONIMOS_ESPECIALIDADE = { 'clinica medica': 'Medicina Interna', 'clin medica': 'Medicina Interna' };
+
+// Pontuacao minima pra aceitar uma sugestao automatica. Um unico substantivo
+// em comum (ex: "Medicina Intensiva" vs "Medicina Interna") gera score baixo
+// e ja causou sugestoes erradas — exige match exato, substring, sinonimo, ou
+// 2+ palavras em comum. Mesmo valor usado no backend (_SCORE_MINIMO_MATCH).
+const SCORE_MINIMO_MATCH_ESPECIALIDADE = 6;
+
 // Sugere o contato mais provável comparando a especialidade (texto livre,
 // digitado pelo proprio candidato no formulario) com a lista oficial da
 // area medica. Nao e garantido — o usuario sempre confere/troca no modal.
@@ -276,6 +288,14 @@ function melhorMatchAreaMedica(especialidadeResidente) {
     if (!alvo) return null;
     const palavrasAlvo = alvo.split(' ').filter(w => w && !STOPWORDS_ESP.has(w));
     let melhorIdx = null, melhorScore = 0;
+
+    Object.entries(SINONIMOS_ESPECIALIDADE).forEach(([chave, nomeOficial]) => {
+        if (!alvo.includes(chave)) return;
+        const nomeOficialNorm = normalizarTexto(nomeOficial);
+        const idx = AREA_MEDICA.findIndex(c => normalizarTexto(c.especialidade) === nomeOficialNorm);
+        if (idx !== -1 && 20 > melhorScore) { melhorScore = 20; melhorIdx = idx; }
+    });
+
     AREA_MEDICA.forEach((c, idx) => {
         const cand = normalizarTexto(c.especialidade);
         let score = 0;
@@ -286,7 +306,7 @@ function melhorMatchAreaMedica(especialidadeResidente) {
         });
         if (score > melhorScore) { melhorScore = score; melhorIdx = idx; }
     });
-    return melhorScore > 0 ? melhorIdx : null;
+    return melhorScore >= SCORE_MINIMO_MATCH_ESPECIALIDADE ? melhorIdx : null;
 }
 
 function formatarDataBR(iso) {

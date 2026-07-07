@@ -852,6 +852,23 @@ def api_especialidades():
 # nao divergir os dois comportamentos.
 _STOPWORDS_ESP = {'e', 'de', 'do', 'da', 'dos', 'das', 'em', 'ou', 'a', 'o', 'para', 'geral'}
 
+# Termos equivalentes na nomenclatura medica brasileira que NAO tem
+# sobreposicao de palavras com o nome oficial (ex: "Clínica Médica" é a
+# mesma coisa que "Medicina Interna", mas nenhuma palavra bate) — sem isso
+# o algoritmo de score por palavras nunca encontraria essa correspondencia.
+# Chave: trecho normalizado a procurar no texto livre. Valor: nome oficial
+# (como aparece em area_medica.especialidade) para onde deve apontar.
+_SINONIMOS_ESPECIALIDADE = {
+    'clinica medica': 'Medicina Interna',
+    'clin medica': 'Medicina Interna',
+}
+
+# Pontuacao minima para aceitar uma correspondencia. Um unico substantivo
+# em comum (ex: "Medicina Intensiva" vs "Medicina Interna", "UTI Neonatal"
+# vs "UTI Adulto") gera score baixo e already gerou falsos positivos —
+# exige match exato, substring, sinonimo, ou 2+ palavras em comum.
+_SCORE_MINIMO_MATCH = 6
+
 
 def _normalizar_texto_especialidade(s):
     s = unicodedata.normalize('NFD', s or '')
@@ -868,6 +885,15 @@ def _melhor_match_especialidade(texto_livre, canonicos_norm):
         return None
     palavras_alvo = [w for w in alvo.split(' ') if w and w not in _STOPWORDS_ESP]
     melhor_idx, melhor_score = None, 0
+
+    for chave, nome_oficial in _SINONIMOS_ESPECIALIDADE.items():
+        if chave in alvo:
+            alvo_norm = _normalizar_texto_especialidade(nome_oficial)
+            if alvo_norm in canonicos_norm:
+                idx = canonicos_norm.index(alvo_norm)
+                if 20 > melhor_score:
+                    melhor_score, melhor_idx = 20, idx
+
     for idx, cand in enumerate(canonicos_norm):
         score = 0
         if cand == alvo:
@@ -879,7 +905,7 @@ def _melhor_match_especialidade(texto_livre, canonicos_norm):
                 score += 3
         if score > melhor_score:
             melhor_score, melhor_idx = score, idx
-    return melhor_idx if melhor_score > 0 else None
+    return melhor_idx if melhor_score >= _SCORE_MINIMO_MATCH else None
 
 
 GRUPO_ESPECIALIDADE_OUTRAS = 'Outras / não identificado'
