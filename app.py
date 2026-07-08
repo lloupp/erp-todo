@@ -2141,6 +2141,18 @@ def criar_acao_pipeline(db, residente_id, etapa, reagendado_para=None):
                (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para))
 
 
+def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
+    """Fecha (marca 'pulado') qualquer acao pendente do pipeline para este
+    residente. Usado quando o status muda por fora do fluxo do pipeline
+    (edicao direta do cadastro ou botao 'Avancar Status' antigo) -- assim o
+    residente sai da Fila de Atendimento em vez de ficar com uma acao
+    pendente desatualizada."""
+    db.execute('''
+        UPDATE pipeline_acoes SET situacao='pulado', responsavel=?, observacao=?, concluido_em=CURRENT_TIMESTAMP
+        WHERE residente_id=? AND situacao='pendente'
+    ''', (responsavel, motivo, residente_id))
+
+
 def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
     """Marca a acao pendente da etapa atual como feita/pulada, muda o status do
     residente se aplicavel (com registro em historico_residentes) e cria a
@@ -2219,9 +2231,11 @@ def api_create_residente():
 @login_required
 def api_update_residente(rid):
     db = get_db()
-    if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
+    row = db.execute('SELECT status FROM residentes WHERE id=?', (rid,)).fetchone()
+    if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
     d = request.get_json()
+    novo_status = d.get('status', 'Interessado')
     db.execute('''
         UPDATE residentes SET
             nome=?, email=?, telefone=?, cpf=?, tipo=?, modalidade=?,
@@ -2237,11 +2251,14 @@ def api_update_residente(rid):
         d.get('especialidade'), d.get('subespecialidade'),
         d.get('instituicao_origem'), d.get('programa_ano'),
         d.get('mes_ano'), d.get('inicio') or None, d.get('termino') or None,
-        d.get('status', 'Interessado'),
+        novo_status,
         d.get('valor') or None, d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
         d.get('comprovante_pagamento'), d.get('observacao'),
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'), rid,
     ))
+    if novo_status != row['status']:
+        responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
+        fechar_pipeline_pendente(db, rid, 'Status alterado manualmente (edicao de cadastro)', responsavel)
     db.commit()
     return jsonify({'ok': True})
 
@@ -2275,6 +2292,8 @@ def api_avancar_residente(rid):
         'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
         (rid, novo_status, obs, responsavel)
     )
+    if novo_status != row['status']:
+        fechar_pipeline_pendente(db, rid, obs or 'Status alterado manualmente (fora do pipeline)', responsavel)
     db.commit()
     return jsonify({'status': novo_status})
 
@@ -2398,6 +2417,8 @@ def api_delete_residente(rid):
     db = get_db()
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
+    db.execute('DELETE FROM pipeline_acoes WHERE residente_id=?', (rid,))
+    db.execute('DELETE FROM historico_residentes WHERE residente_id=?', (rid,))
     db.execute('DELETE FROM residentes WHERE id=?', (rid,))
     db.commit()
     return jsonify({'ok': True})
