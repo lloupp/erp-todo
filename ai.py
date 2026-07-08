@@ -248,8 +248,40 @@ class AIError(Exception):
     pass
 
 
-def chamar_openrouter(messages, temperature=0.3, max_tokens=2048, timeout=60):
-    """Faz POST para o endpoint chat/completions da OpenRouter.
+# Modelo padrão configurado (hy3:free) é free-tier -- sem custo por token,
+# entao o teto e' so uma rede de seguranca contra resposta infinita, nao uma
+# economia. Bem acima do que qualquer pergunta razoavel precisa.
+MAX_TOKENS_PADRAO = 16000
+
+
+def _montar_request(cfg, payload):
+    url = f"{cfg['base_url']}/chat/completions"
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, method='POST')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('Authorization', f"Bearer {cfg['api_key']}")
+    req.add_header('Accept', 'application/json' if not payload.get('stream') else 'text/event-stream')
+    # Headers recomendados pela OpenRouter para atribuição/rankings (opcionais).
+    req.add_header('HTTP-Referer', 'https://github.com/erp-todo')
+    req.add_header('X-Title', 'ERP Estagios - Assistente IA')
+    return req
+
+
+def _erro_http(e):
+    detalhe = ''
+    try:
+        detalhe = e.read().decode('utf-8')[:500]
+    except Exception:
+        pass
+    if e.code in (401, 403):
+        return AIError('Chave de API da OpenRouter inválida ou sem permissão.')
+    if e.code == 429:
+        return AIError('Limite de uso da API da OpenRouter atingido. Tente mais tarde.')
+    return AIError(f'Erro da API da OpenRouter (HTTP {e.code}). {detalhe}')
+
+
+def chamar_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=90):
+    """Faz POST (sem streaming) para o endpoint chat/completions da OpenRouter.
 
     `messages`: lista [{role, content}]. Retorna o texto da resposta (str).
     Lança AIError com mensagem amigável em caso de falha.
@@ -258,7 +290,6 @@ def chamar_openrouter(messages, temperature=0.3, max_tokens=2048, timeout=60):
         raise AIError('Assistente de IA não está configurado.')
 
     cfg = _config()
-    url = f"{cfg['base_url']}/chat/completions"
     payload = {
         'model': cfg['model'],
         'messages': messages,
@@ -266,29 +297,13 @@ def chamar_openrouter(messages, temperature=0.3, max_tokens=2048, timeout=60):
         'max_tokens': max_tokens,
         'stream': False,
     }
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(url, data=data, method='POST')
-    req.add_header('Content-Type', 'application/json')
-    req.add_header('Authorization', f"Bearer {cfg['api_key']}")
-    req.add_header('Accept', 'application/json')
-    # Headers recomendados pela OpenRouter para atribuição/rankings (opcionais).
-    req.add_header('HTTP-Referer', 'https://github.com/erp-todo')
-    req.add_header('X-Title', 'ERP Estagios - Assistente IA')
+    req = _montar_request(cfg, payload)
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
-        detalhe = ''
-        try:
-            detalhe = e.read().decode('utf-8')[:500]
-        except Exception:
-            pass
-        if e.code in (401, 403):
-            raise AIError('Chave de API da OpenRouter inválida ou sem permissão.')
-        if e.code == 429:
-            raise AIError('Limite de uso da API da OpenRouter atingido. Tente mais tarde.')
-        raise AIError(f'Erro da API da OpenRouter (HTTP {e.code}). {detalhe}')
+        raise _erro_http(e)
     except urllib.error.URLError as e:
         raise AIError(f'Falha de conexão com a API da OpenRouter: {e.reason}')
     except Exception as e:
@@ -305,6 +320,64 @@ def chamar_openrouter(messages, temperature=0.3, max_tokens=2048, timeout=60):
         # pensando internamente e nunca escrever a resposta final (finish_reason=length).
         raise AIError('A IA ficou sem espaço de resposta antes de concluir. Tente novamente ou faça uma pergunta mais objetiva.')
     return conteudo.strip()
+
+
+def stream_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=120):
+    """Faz POST com stream:true e vai retornando (yield) os pedaços de texto
+    da resposta conforme chegam (Server-Sent Events no formato da OpenAI).
+
+    Só repassa `delta.content` (o texto final) — ignora `delta.reasoning`
+    quando presente, que é o raciocínio interno de modelos como o hy3:free e
+    não deve aparecer pro usuário. Lança AIError se a conexão falhar antes de
+    qualquer conteúdo chegar; se falhar no meio do stream, propaga o que já
+    foi gerado e deixa o chamador decidir (o generator simplesmente para).
+    """
+    if not _enabled():
+        raise AIError('Assistente de IA não está configurado.')
+
+    cfg = _config()
+    payload = {
+        'model': cfg['model'],
+        'messages': messages,
+        'temperature': temperature,
+        'max_tokens': max_tokens,
+        'stream': True,
+    }
+    req = _montar_request(cfg, payload)
+
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as e:
+        raise _erro_http(e)
+    except urllib.error.URLError as e:
+        raise AIError(f'Falha de conexão com a API da OpenRouter: {e.reason}')
+
+    recebeu_conteudo = False
+    try:
+        for linha_bruta in resp:
+            linha = linha_bruta.decode('utf-8', errors='ignore').strip()
+            if not linha or not linha.startswith('data:'):
+                continue
+            trecho = linha[len('data:'):].strip()
+            if trecho == '[DONE]':
+                break
+            try:
+                obj = json.loads(trecho)
+            except json.JSONDecodeError:
+                continue
+            try:
+                delta = obj['choices'][0]['delta']
+            except (KeyError, IndexError, TypeError):
+                continue
+            texto = delta.get('content')
+            if texto:
+                recebeu_conteudo = True
+                yield texto
+    finally:
+        resp.close()
+
+    if not recebeu_conteudo:
+        raise AIError('A IA não retornou conteúdo. Tente novamente ou faça uma pergunta mais objetiva.')
 
 
 def montar_mensagens(snapshot, historico):

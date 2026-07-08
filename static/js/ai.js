@@ -52,25 +52,45 @@
         historico.push({ role: 'user', content: texto });
         addMsg('user', texto);
         setLoading(true);
-        fetch('/api/ai/chat', {
+
+        var bolha = addMsg('assistant', '');
+        var acumulado = '';
+        var box = document.getElementById('ai-msgs');
+
+        fetch('/api/ai/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ messages: historico })
-        })
-            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-            .then(function (res) {
-                setLoading(false);
-                if (res.ok && res.j.resposta) {
-                    historico.push({ role: 'assistant', content: res.j.resposta });
-                    addMsg('assistant', res.j.resposta);
-                } else {
-                    addMsg('assistant', '⚠ ' + (res.j.erro || 'Não foi possível obter resposta.'));
-                }
-            })
-            .catch(function () {
-                setLoading(false);
-                addMsg('assistant', '⚠ Falha de conexão com o assistente.');
-            });
+        }).then(function (r) {
+            if (!r.ok || !r.body) {
+                return r.json().catch(function () { return {}; }).then(function (j) {
+                    throw new Error(j.erro || 'Não foi possível obter resposta.');
+                });
+            }
+            var reader = r.body.getReader();
+            var decoder = new TextDecoder('utf-8');
+            function ler() {
+                return reader.read().then(function (res) {
+                    if (res.done) {
+                        setLoading(false);
+                        if (acumulado.trim()) {
+                            historico.push({ role: 'assistant', content: acumulado });
+                        } else {
+                            bolha.innerHTML = renderMd('⚠ A IA não retornou conteúdo.');
+                        }
+                        return;
+                    }
+                    acumulado += decoder.decode(res.value, { stream: true });
+                    bolha.innerHTML = renderMd(acumulado);
+                    if (box) box.scrollTop = box.scrollHeight;
+                    return ler();
+                });
+            }
+            return ler();
+        }).catch(function (err) {
+            setLoading(false);
+            bolha.innerHTML = renderMd('⚠ ' + ((err && err.message) || 'Falha de conexão com o assistente.'));
+        });
     }
 
     function gerarResumo() {

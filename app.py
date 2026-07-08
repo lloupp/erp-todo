@@ -16,7 +16,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, render_template, request, jsonify, g, Response, redirect, url_for, flash, session
+from flask import Flask, render_template, request, jsonify, g, Response, redirect, url_for, flash, session, stream_with_context
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_weasyprint import HTML
 
@@ -1230,7 +1230,7 @@ def api_ai_chat():
         snapshot = ai.montar_snapshot(get_db())
         mensagens = ai.montar_mensagens(snapshot, historico)
         inicio = time.time()
-        resposta = ai.chamar_openrouter(mensagens, max_tokens=4096)
+        resposta = ai.chamar_openrouter(mensagens)
         ms = int((time.time() - inicio) * 1000)
         ultima = (historico[-1].get('content') or '')[:120]
         app.logger.info(f'IA chat OK ({ms}ms): "{ultima}"')
@@ -1238,6 +1238,38 @@ def api_ai_chat():
     except ai.AIError as e:
         app.logger.warning(f'IA chat FALHOU: {e}')
         return jsonify({'erro': str(e)}), 502
+
+
+@app.route('/api/ai/chat/stream', methods=['POST'])
+@login_required
+def api_ai_chat_stream():
+    """Mesma coisa que /api/ai/chat, mas devolve a resposta aos pedacos
+    (stream:true na OpenRouter) em vez de esperar o texto inteiro -- o
+    usuario ve a resposta sendo "digitada" em vez de travar 10-60s numa
+    pergunta so pra depois aparecer tudo de uma vez (ou dar timeout)."""
+    if not ai.is_enabled():
+        return jsonify({'erro': 'Assistente de IA não está habilitado.'}), 503
+    data = request.get_json(silent=True) or {}
+    historico = data.get('messages') or []
+    if not isinstance(historico, list) or not historico:
+        return jsonify({'erro': 'Nenhuma mensagem enviada.'}), 400
+    historico = historico[-12:]
+    snapshot = ai.montar_snapshot(get_db())
+    mensagens = ai.montar_mensagens(snapshot, historico)
+    ultima = (historico[-1].get('content') or '')[:120]
+
+    def gerar():
+        inicio = time.time()
+        try:
+            for pedaco in ai.stream_openrouter(mensagens):
+                yield pedaco
+            ms = int((time.time() - inicio) * 1000)
+            app.logger.info(f'IA chat stream OK ({ms}ms): "{ultima}"')
+        except ai.AIError as e:
+            app.logger.warning(f'IA chat stream FALHOU: {e}')
+            yield f'\n\n⚠ {e}'
+
+    return Response(stream_with_context(gerar()), mimetype='text/plain; charset=utf-8')
 
 
 @app.route('/api/ai/insights', methods=['GET'])
@@ -1258,7 +1290,7 @@ def api_ai_insights():
         }
         mensagens = ai.montar_mensagens(snapshot, [pedido])
         inicio = time.time()
-        resumo = ai.chamar_openrouter(mensagens, temperature=0.2, max_tokens=2000)
+        resumo = ai.chamar_openrouter(mensagens, temperature=0.2)
         ms = int((time.time() - inicio) * 1000)
         app.logger.info(f'IA insights OK ({ms}ms)')
         return jsonify({'resumo': resumo})
