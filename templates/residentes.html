@@ -77,8 +77,14 @@
             <select id="f-especialidade" onchange="aplicarFiltro()">
                 <option value="">Todas especialidades</option>
             </select>
-            <input type="month" id="f-mes" onchange="aplicarFiltro()" title="Mês/Ano do estágio desejado">
-            <input type="month" id="f-mes-inscricao" onchange="aplicarFiltro()" title="Mês/ano em que o pedido foi enviado (Data Inscrição)">
+            <div class="filter-group">
+                <label>Mês do estágio</label>
+                <input type="month" id="f-mes" onchange="aplicarFiltro()" title="Mês/ano em que o estágio é desejado">
+            </div>
+            <div class="filter-group">
+                <label>Data inscrição</label>
+                <input type="month" id="f-mes-inscricao" onchange="aplicarFiltro()" title="Mês/ano em que o pedido foi de fato enviado">
+            </div>
             <select id="f-status" onchange="aplicarFiltro()">
                 <option value="">Todos os status</option>
                 <option>Interessado</option>
