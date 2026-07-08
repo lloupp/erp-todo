@@ -117,6 +117,7 @@ Botão flutuante global (FAB) presente em todas as telas via `templates/_sidebar
 - **Config (.env)**: `AI_ENABLED`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default `tencent/hy3:free`, um modelo gratuito da OpenRouter), `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`). Sem chave, `ai.is_enabled()` é falso e o FAB não aparece.
 - **HTTP**: `urllib.request` da stdlib (sem nova dependência). Endpoint OpenAI-compatible `chat/completions`, `stream:false`.
 - **Segurança**: a IA **não gera nem executa SQL**. `ai.montar_snapshot(db)` pré-computa agregações read-only (reusa as queries de `/api/dashboard` e `/api/pendencias`) + listas de registros recentes. **Política de PII**: o snapshot inclui nome/especialidade/status, mas **nunca CPF, e-mail ou telefone**.
+- **Histórico multi-ano**: o snapshot inclui `por_ano_do_pedido`/`por_ano_do_pedido_e_status`/`por_ano_do_pedido_e_especialidade` — contagens agrupadas pelo ano do campo `data_inscricao` (quando o pedido foi de fato enviado), **não** `mes_ano` (mês do estágio desejado, que pode ser passado/futuro e não indica a data do pedido). É o que permite a IA responder perguntas tipo "quantos pedidos entraram em 2025".
 - **Endpoints** (`@login_required`): `GET /api/ai/status` → `{enabled}`; `POST /api/ai/chat` (body `{messages:[...]}`, histórico limitado a 12); `GET /api/ai/insights` (resumo executivo). Erros viram `AIError` com mensagem amigável (HTTP 502).
 
 ## Workflow Stages

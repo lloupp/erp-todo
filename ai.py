@@ -52,6 +52,11 @@ SYSTEM_PROMPT = (
     "gerenciado externamente por outro sistema — você NÃO tem esses dados e "
     "não deve comentar sobre ele; se perguntarem, diga que esse módulo não é "
     "mais gerenciado por aqui.\n\n"
+    "O snapshot cobre TODO o histórico de pedidos, não só os mais recentes — "
+    "inclui uma quebra por ano em que cada pedido foi de fato enviado "
+    "(por_ano_do_pedido / por_ano_do_pedido_e_status / por_ano_do_pedido_e_especialidade). "
+    "Use esses campos para responder perguntas sobre um ano específico (ex.: "
+    "\"quantos pedidos vieram em 2025\", \"quantos foram deferidos em 2025\").\n\n"
     "REGRAS IMPORTANTES:\n"
     "- Responda SEMPRE em português do Brasil, de forma clara e objetiva.\n"
     "- Baseie-se EXCLUSIVAMENTE nos dados do SNAPSHOT fornecido abaixo. "
@@ -107,6 +112,37 @@ def montar_snapshot(db):
         FROM residentes ORDER BY updated_at DESC LIMIT 15
     ''')
 
+    # ── Por ano em que o PEDIDO foi enviado (data_inscricao, ex: "26/06/2025 12:48") ──
+    # Diferente de mes_ano (mes do estagio desejado, pode ser passado/futuro e vem
+    # de import de planilha antiga) -- isso aqui e quando a pessoa de fato se
+    # inscreveu, o que responde perguntas tipo "quantos pedidos vieram em 2025".
+    ANO_PEDIDO_EXPR = '''
+        CASE
+            WHEN data_inscricao LIKE '__/__/____%' THEN substr(data_inscricao,7,4)
+            WHEN data_inscricao LIKE '____-__-__%' THEN substr(data_inscricao,1,4)
+            ELSE NULL
+        END
+    '''
+    res_por_ano = rows(f'''
+        SELECT {ANO_PEDIDO_EXPR} AS ano, COUNT(*) AS cnt
+        FROM residentes
+        WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
+        GROUP BY ano HAVING ano IS NOT NULL ORDER BY ano DESC
+    ''')
+    res_por_ano_status = rows(f'''
+        SELECT {ANO_PEDIDO_EXPR} AS ano, status, COUNT(*) AS cnt
+        FROM residentes
+        WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
+        GROUP BY ano, status HAVING ano IS NOT NULL ORDER BY ano DESC, cnt DESC
+    ''')
+    res_por_ano_especialidade = rows(f'''
+        SELECT {ANO_PEDIDO_EXPR} AS ano, COALESCE(especialidade,'(não informado)') AS especialidade,
+               COUNT(*) AS cnt
+        FROM residentes
+        WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
+        GROUP BY ano, especialidade HAVING ano IS NOT NULL ORDER BY ano DESC, cnt DESC LIMIT 60
+    ''')
+
     return {
         'residentes': {
             'total': total_res,
@@ -115,12 +151,21 @@ def montar_snapshot(db):
             'por_especialidade': [dict(r) for r in res_por_esp],
             'pendencias': dict(res_pend) if res_pend else {},
             'recentes': [dict(r) for r in res_recentes],
+            'por_ano_do_pedido': [dict(r) for r in res_por_ano],
+            'por_ano_do_pedido_e_status': [dict(r) for r in res_por_ano_status],
+            'por_ano_do_pedido_e_especialidade': [dict(r) for r in res_por_ano_especialidade],
         },
         'observacoes': (
             'Status possíveis: Interessado, Em andamento, Deferido, Confirmado, '
             'Trocado, Indeferido, Desistente, Cancelado, Nao veio. '
             'pendencias.novos/em_andamento/deferidos/confirmados contam por status atual. '
-            'pendencias.pag_pendente conta pagamentos pendentes (exclui status encerrados). Valores em R$.'
+            'pendencias.pag_pendente conta pagamentos pendentes (exclui status encerrados). Valores em R$. '
+            'por_ano_do_pedido* contam pelo ANO em que a pessoa de fato enviou o pedido/inscrição '
+            '(campo data_inscricao) — isso é DIFERENTE de mes_ano (mês do estágio desejado, que pode '
+            'ser passado ou futuro e não indica quando o pedido foi enviado). Para perguntas do tipo '
+            '"quantos pedidos entraram em 2025" ou "quantos foram deferidos em 2025", use '
+            'por_ano_do_pedido / por_ano_do_pedido_e_status, não por_status sozinho (que é o total '
+            'histórico, sem filtro de ano).'
         ),
     }
 
