@@ -280,7 +280,7 @@ def _erro_http(e):
     return AIError(f'Erro da API da OpenRouter (HTTP {e.code}). {detalhe}')
 
 
-def chamar_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=90):
+def chamar_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=45):
     """Faz POST (sem streaming) para o endpoint chat/completions da OpenRouter.
 
     `messages`: lista [{role, content}]. Retorna o texto da resposta (str).
@@ -322,7 +322,7 @@ def chamar_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, t
     return conteudo.strip()
 
 
-def stream_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=120):
+def stream_openrouter(messages, temperature=0.3, max_tokens=MAX_TOKENS_PADRAO, timeout=60):
     """Faz POST com stream:true e vai retornando (yield) os pedaços de texto
     da resposta conforme chegam (Server-Sent Events no formato da OpenAI).
 

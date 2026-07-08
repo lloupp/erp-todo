@@ -21,6 +21,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from flask_weasyprint import HTML
 
 import ai  # assistente IA (OpenRouter) — lê config de env em runtime
+import ai_pool  # pool dedicado de threads para chamadas de IA (isolamento do Waitress)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estagios.db')
 
@@ -1261,7 +1262,7 @@ def api_ai_chat_stream():
     def gerar():
         inicio = time.time()
         try:
-            for pedaco in ai.stream_openrouter(mensagens):
+            for pedaco in ai_pool.run(ai.stream_openrouter, mensagens):
                 yield pedaco
             ms = int((time.time() - inicio) * 1000)
             app.logger.info(f'IA chat stream OK ({ms}ms): "{ultima}"')
@@ -1290,7 +1291,7 @@ def api_ai_insights():
         }
         mensagens = ai.montar_mensagens(snapshot, [pedido])
         inicio = time.time()
-        resumo = ai.chamar_openrouter(mensagens, temperature=0.2)
+        resumo = ai_pool.run(ai.chamar_openrouter, mensagens, temperature=0.2)
         ms = int((time.time() - inicio) * 1000)
         app.logger.info(f'IA insights OK ({ms}ms)')
         return jsonify({'resumo': resumo})

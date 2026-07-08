@@ -14,5 +14,6 @@ if __name__ == '__main__':
         )
     app.secret_key = secret
     port = int(os.environ.get('PORT', 5000))
-    print(f'Servidor de producao rodando em http://0.0.0.0:{port}')
-    serve(app, host='0.0.0.0', port=port, threads=8)
+    threads = int(os.environ.get('WAITRESS_THREADS', 16))
+    print(f'Servidor de producao rodando em http://0.0.0.0:{port} (threads={threads})')
+    serve(app, host='0.0.0.0', port=port, threads=threads)
