@@ -2088,13 +2088,17 @@ def api_get_residentes():
         b = f'%{busca}%'
         params.extend([b, b, b, b, b, b, b])
 
-    # Cancelados vao sempre pro fim da lista (ultimas paginas), nao importa a
-    # ordenacao escolhida -- nao atrapalham quem esta olhando os casos ativos.
-    PRIORIDADE_CANCELADO = "CASE WHEN status='Cancelado' THEN 1 ELSE 0 END"
+    # Status encerrados (sem continuidade no atendimento) vao sempre pro fim da
+    # lista (ultimas paginas), nao importa a ordenacao escolhida -- nao
+    # atrapalham quem esta olhando os casos ativos. 'Concluido' fica de fora
+    # de proposito: e um desfecho de sucesso, nao precisa ser escondido.
+    STATUS_ENCERRADOS = ('Cancelado', 'Indeferido', 'Desistente', 'Nao veio')
+    placeholders_encerrados = ','.join('?' * len(STATUS_ENCERRADOS))
+    PRIORIDADE_ENCERRADO = f"CASE WHEN status IN ({placeholders_encerrados}) THEN 1 ELSE 0 END"
     ORDENACOES = {
-        'recentes': f'{PRIORIDADE_CANCELADO}, created_at DESC, id DESC',
-        'nome': f'{PRIORIDADE_CANCELADO}, nome COLLATE NOCASE',
-        'mes_ano': f'{PRIORIDADE_CANCELADO}, mes_ano DESC, nome',
+        'recentes': f'{PRIORIDADE_ENCERRADO}, created_at DESC, id DESC',
+        'nome': f'{PRIORIDADE_ENCERRADO}, nome COLLATE NOCASE',
+        'mes_ano': f'{PRIORIDADE_ENCERRADO}, mes_ano DESC, nome',
     }
     order_sql = ORDENACOES.get(ordenar, ORDENACOES['mes_ano'])
 
@@ -2110,7 +2114,7 @@ def api_get_residentes():
                     )
                 ) AS INTEGER) as dias_no_status
             FROM residentes {where} ORDER BY {order_sql} LIMIT ? OFFSET ?''',
-        params + [per_page, offset]
+        params + list(STATUS_ENCERRADOS) + [per_page, offset]
     ).fetchall()
 
     return jsonify({
