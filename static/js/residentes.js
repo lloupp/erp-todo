@@ -262,9 +262,22 @@ async function abrirModalPipelineAcao(a) {
         mensagemLabel.style.display = 'block';
         btnWpp.style.display = 'inline-block';
     } else if (info.tipoMensagem === 'area_medica') {
-        mensagemTxt.value = montarMensagemAreaMedica(a, { especialidade: a.especialidade });
+        await carregarAreaMedica();
+        if (!AREA_MEDICA.length) {
+            showToast('Lista de contatos da área médica não carregada.', 'error');
+        }
+        extra.innerHTML = `
+            <label>Chefe de serviço (confirme o contato)
+                <select id="pa-campo-contato-am" onchange="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
+                    ${AREA_MEDICA.map((c, idx) => `<option value="${idx}">${esc(c.especialidade)} — ${esc(c.nome)}</option>`).join('')}
+                </select>
+            </label>`;
+        const melhorIdx = melhorMatchAreaMedica(a.especialidade);
+        const selectAm = document.getElementById('pa-campo-contato-am');
+        if (melhorIdx !== null && selectAm) selectAm.value = melhorIdx;
         mensagemLabel.style.display = 'block';
         btnWpp.style.display = 'inline-block';
+        recalcularMensagemPipeline();
     } else if (info.tipoMensagem === 'financeiro') {
         await carregarAreaMedica();
         const contatoFin = (AREA_MEDICA || []).find(c => normalizarTexto(c.especialidade) === 'financeiro');
@@ -322,7 +335,12 @@ function recalcularMensagemPipeline() {
     if (!pipelineAcaoAtual) return;
     const a = pipelineAcaoAtual.residente;
     const info = PIPELINE_ETAPAS_INFO[pipelineAcaoAtual.etapa];
-    if (info.tipoMensagem === 'link_docs') {
+    if (info.tipoMensagem === 'area_medica') {
+        const selectAm = document.getElementById('pa-campo-contato-am');
+        const contato = selectAm ? AREA_MEDICA[parseInt(selectAm.value, 10)] : null;
+        pipelineAcaoAtual.telefoneDestino = contato ? contato.celular : null;
+        document.getElementById('pa-mensagem').value = contato ? montarMensagemAreaMedica(a, contato) : '';
+    } else if (info.tipoMensagem === 'link_docs') {
         const link = (document.getElementById('pa-campo-link').value || '').trim() || '(link pendente)';
         const documentos = (document.getElementById('pa-campo-documentos').value || '').trim();
         const template = MENSAGENS_MODELO.whatsapp_cliente_link_docs || '';
