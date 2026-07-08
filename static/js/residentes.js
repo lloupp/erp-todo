@@ -878,6 +878,16 @@ async function abrirHistorico(id, nome) {
         const cor = s => STATUS_COLORS[s] || '#6b7280';
         document.getElementById('tbody-hist').innerHTML = rows.map(r => {
             const dt = r.ts ? new Date(r.ts).toLocaleString('pt-BR') : '—';
+            if (r.tipo === 'pipeline') {
+                const info = PIPELINE_ETAPAS_INFO[r.etapa] || {};
+                const corPipeline = r.situacao === 'pulado' ? '#dc2626' : '#6b7280';
+                return `<tr>
+                    <td><span class="badge-status" style="background:${corPipeline};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#fff">Pipeline: ${esc(info.titulo || ('Etapa ' + r.etapa))}</span></td>
+                    <td>${esc(r.observacao || '—')}</td>
+                    <td>${esc(r.responsavel || '—')}</td>
+                    <td style="white-space:nowrap;font-size:12px;">${dt}</td>
+                </tr>`;
+            }
             return `<tr>
                 <td><span class="badge-status" style="background:${cor(r.status)};padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#fff">${esc(r.status)}</span></td>
                 <td>${esc(r.observacao || '—')}</td>

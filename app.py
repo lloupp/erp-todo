@@ -2162,11 +2162,15 @@ def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, obse
         raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
     novo_status, proxima_etapa = transicoes[resultado]
     situacao_acao = 'pulado' if resultado in RESULTADOS_PULADOS else 'feita'
+    # Sem observacao explicita, grava o proprio resultado -- e o que distingue,
+    # por exemplo, 'comprovante_ok' de 'falta_documento' na etapa 7 quando essa
+    # acao aparece depois no historico combinado do residente.
+    obs_pipeline = observacao or resultado
 
     cur = db.execute('''
         UPDATE pipeline_acoes SET situacao=?, responsavel=?, observacao=?, concluido_em=CURRENT_TIMESTAMP
         WHERE residente_id=? AND etapa=? AND situacao='pendente'
-    ''', (situacao_acao, responsavel, observacao, residente_id, etapa_atual))
+    ''', (situacao_acao, responsavel, obs_pipeline, residente_id, etapa_atual))
     if cur.rowcount == 0:
         raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
 
@@ -2267,11 +2271,33 @@ def api_update_residente(rid):
 @login_required
 def api_historico_residente(rid):
     db = get_db()
-    rows = db.execute(
-        'SELECT * FROM historico_residentes WHERE residente_id=? ORDER BY ts',
+    status_rows = db.execute(
+        'SELECT status, observacao, responsavel, ts FROM historico_residentes WHERE residente_id=?',
         (rid,)
     ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    # Acoes do pipeline que nao mudam o status (ex: 'enviado ao chefe',
+    # 'solicitado ao financeiro') nunca entram em historico_residentes --
+    # sem isso ficariam invisiveis na tela de Residentes mesmo tendo sido
+    # feitas pelo pipeline. So entram acoes ja concluidas ('feita'/'pulado'),
+    # nunca a pendente atual (essa ja aparece na Fila de Atendimento).
+    pipeline_rows = db.execute('''
+        SELECT etapa, situacao, observacao, responsavel,
+               COALESCE(concluido_em, criado_em) as ts
+        FROM pipeline_acoes
+        WHERE residente_id=? AND situacao != 'pendente'
+    ''', (rid,)).fetchall()
+
+    eventos = [
+        {'tipo': 'status', 'status': r['status'], 'observacao': r['observacao'],
+         'responsavel': r['responsavel'], 'ts': r['ts']}
+        for r in status_rows
+    ] + [
+        {'tipo': 'pipeline', 'etapa': r['etapa'], 'situacao': r['situacao'],
+         'observacao': r['observacao'], 'responsavel': r['responsavel'], 'ts': r['ts']}
+        for r in pipeline_rows
+    ]
+    eventos.sort(key=lambda e: e['ts'] or '')
+    return jsonify(eventos)
 
 
 @app.route('/api/residentes/<int:rid>/avancar', methods=['POST'])
