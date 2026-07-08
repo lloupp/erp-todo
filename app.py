@@ -2088,10 +2088,13 @@ def api_get_residentes():
         b = f'%{busca}%'
         params.extend([b, b, b, b, b, b, b])
 
+    # Cancelados vao sempre pro fim da lista (ultimas paginas), nao importa a
+    # ordenacao escolhida -- nao atrapalham quem esta olhando os casos ativos.
+    PRIORIDADE_CANCELADO = "CASE WHEN status='Cancelado' THEN 1 ELSE 0 END"
     ORDENACOES = {
-        'recentes': 'created_at DESC, id DESC',
-        'nome': 'nome COLLATE NOCASE',
-        'mes_ano': 'mes_ano DESC, nome',
+        'recentes': f'{PRIORIDADE_CANCELADO}, created_at DESC, id DESC',
+        'nome': f'{PRIORIDADE_CANCELADO}, nome COLLATE NOCASE',
+        'mes_ano': f'{PRIORIDADE_CANCELADO}, mes_ano DESC, nome',
     }
     order_sql = ORDENACOES.get(ordenar, ORDENACOES['mes_ano'])
 
