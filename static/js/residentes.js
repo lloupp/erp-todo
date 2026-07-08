@@ -369,6 +369,7 @@ async function executarAcaoPipeline(resultado) {
         showToast('Ação registrada.', 'success');
         carregarPipelineFila();
         loadResidentes();
+        loadWelcomeBanner();
     } catch (_) {}
 }
 
@@ -823,6 +824,7 @@ async function salvarResidente() {
         }
         fecharModal('modal-residente');
         loadResidentes();
+        loadWelcomeBanner();
     } catch (_) {}
 }
 
@@ -861,6 +863,7 @@ async function confirmarAvancar() {
         fecharModal('modal-avancar');
         idAvancar = null;
         loadResidentes();
+        loadWelcomeBanner();
     } catch (_) {}
 }
 
@@ -913,6 +916,7 @@ async function excluirResidente() {
         fecharModal('modal-excluir');
         idExcluir = null;
         loadResidentes();
+        loadWelcomeBanner();
     } catch (_) {}
 }
 
@@ -1001,6 +1005,7 @@ async function confirmarImport() {
         showToast(`${data.novos} registros importados com sucesso!`, 'success');
         fecharModal('modal-import');
         loadResidentes();
+        loadWelcomeBanner();
     } catch (e) {
         showToast('Erro ao importar', 'error');
     }
