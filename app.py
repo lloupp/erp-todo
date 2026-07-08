@@ -1943,8 +1943,6 @@ def api_vagas_semana():
 @app.route('/configuracoes')
 @login_required
 def pagina_configuracoes():
-    if current_user.role != 'admin':
-        return redirect(url_for('index'))
     return render_template('configuracoes.html')
 
 
@@ -1960,8 +1958,6 @@ def api_area_medica():
 @app.route('/api/area-medica', methods=['POST'])
 @login_required
 def api_area_medica_criar():
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     d = request.get_json() or {}
     especialidade = (d.get('especialidade') or '').strip()
     if not especialidade:
@@ -1980,8 +1976,6 @@ def api_area_medica_criar():
 @app.route('/api/area-medica/<int:cid>', methods=['PUT'])
 @login_required
 def api_area_medica_editar(cid):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     if not get_db().execute('SELECT id FROM area_medica WHERE id=?', (cid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
     d = request.get_json() or {}
@@ -2002,8 +1996,6 @@ def api_area_medica_editar(cid):
 @app.route('/api/area-medica/<int:cid>', methods=['DELETE'])
 @login_required
 def api_area_medica_excluir(cid):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     if not db.execute('SELECT id FROM area_medica WHERE id=?', (cid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
@@ -2024,8 +2016,6 @@ def api_mensagens_modelo():
 @app.route('/api/mensagens-modelo/<chave>', methods=['PUT'])
 @login_required
 def api_mensagens_modelo_editar(chave):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     if not db.execute('SELECT chave FROM mensagens_modelo WHERE chave=?', (chave,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404

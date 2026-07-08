@@ -9,7 +9,7 @@
             <a href="/residentes" class="nav-link{{ ' active' if active_page == 'residentes' else '' }}">Residentes</a>
             <a href="/relatorios" class="nav-link{{ ' active' if active_page == 'relatorios' else '' }}">Relatórios</a>
             <a href="/usuarios" class="nav-link{{ ' active' if active_page == 'usuarios' else '' }}" id="nav-usuarios" style="display:none;">Usuários</a>
-            <a href="/configuracoes" class="nav-link{{ ' active' if active_page == 'configuracoes' else '' }}" id="nav-configuracoes" style="display:none;">Configurações</a>
+            <a href="/configuracoes" class="nav-link{{ ' active' if active_page == 'configuracoes' else '' }}">Configurações</a>
         </div>
         <div class="sidebar-user" id="sidebar-user">
             <strong>Carregando...</strong>
@@ -29,7 +29,7 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (u) {
             if (u && u.role === 'admin') {
-                ['nav-usuarios', 'nav-vagas', 'nav-configuracoes'].forEach(function (id) {
+                ['nav-usuarios', 'nav-vagas'].forEach(function (id) {
                     var e = document.getElementById(id);
                     if (e) e.style.display = '';
                 });

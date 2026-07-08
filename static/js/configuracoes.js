@@ -1,4 +1,4 @@
-// configuracoes.js — Modelos de mensagem + Contatos da Área Médica (admin)
+// configuracoes.js — Modelos de mensagem + Contatos da Área Médica
 
 'use strict';
 
