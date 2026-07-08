@@ -26,6 +26,7 @@ const STATUS_COLORS = {
     'Em andamento': '#f59e0b',
     'Deferido':     '#3b82f6',
     'Confirmado':   '#10b981',
+    'Concluído':    '#059669',
     'Trocado':      '#06b6d4',
     'Indeferido':   '#dc2626',
     'Desistente':   '#9ca3af',
@@ -454,6 +455,7 @@ function getFiltros() {
     const mod   = document.getElementById('f-modalidade').value;
     const esp   = document.getElementById('f-especialidade').value;
     const mes   = document.getElementById('f-mes').value;
+    const mesInsc = document.getElementById('f-mes-inscricao').value;
     const stat  = document.getElementById('f-status').value;
     const pag   = document.getElementById('f-pagamento').value;
     const ord   = document.getElementById('f-ordenar').value;
@@ -462,6 +464,7 @@ function getFiltros() {
     if (mod)   p.modalidade = mod;
     if (esp)   p.especialidade = esp;
     if (mes)   p.mes_ano = mes;
+    if (mesInsc) p.mes_inscricao = mesInsc;
     if (stat)  p.status = stat;
     if (pag)   p.status_pagamento = pag;
     p.ordenar = ord || 'recentes';
@@ -469,7 +472,7 @@ function getFiltros() {
 }
 
 function limparFiltros() {
-    ['f-busca','f-mes'].forEach(id => document.getElementById(id).value = '');
+    ['f-busca','f-mes','f-mes-inscricao'].forEach(id => document.getElementById(id).value = '');
     ['f-tipo','f-modalidade','f-especialidade','f-status','f-pagamento'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-ordenar').value = 'recentes';
     currentPage = 1;

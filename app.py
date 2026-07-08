@@ -988,6 +988,18 @@ def _melhor_match_especialidade(texto_livre, canonicos_norm):
     return melhor_idx if melhor_score >= _SCORE_MINIMO_MATCH else None
 
 
+# Extrai 'AAAA-MM' de data_inscricao (quando o pedido foi de fato enviado),
+# que vem como texto livre do import em dois formatos: 'DD/MM/AAAA HH:MM' ou
+# ISO 'AAAA-MM-DD...'. Usado pelo filtro de Data Inscricao -- diferente de
+# mes_ano (mes do estagio desejado, coluna propria, match exato direto).
+SQL_MES_INSCRICAO = '''
+    CASE
+        WHEN data_inscricao LIKE '__/__/____%' THEN substr(data_inscricao,7,4) || '-' || substr(data_inscricao,4,2)
+        WHEN data_inscricao LIKE '____-__-__%' THEN substr(data_inscricao,1,7)
+        ELSE NULL
+    END
+'''
+
 GRUPO_ESPECIALIDADE_OUTRAS = 'Outras / não identificado'
 
 
@@ -2049,6 +2061,7 @@ def api_get_residentes():
     modalidade = request.args.get('modalidade', '')
     especialidade = request.args.get('especialidade', '')
     mes_ano = request.args.get('mes_ano', '')
+    mes_inscricao = request.args.get('mes_inscricao', '')
     status = request.args.get('status', '')
     status_pagamento = request.args.get('status_pagamento', '')
     busca = request.args.get('busca', '').strip()
@@ -2079,6 +2092,8 @@ def api_get_residentes():
             conds.append('especialidade=?'); params.append(especialidade)
     if mes_ano:
         conds.append('mes_ano=?'); params.append(mes_ano)
+    if mes_inscricao:
+        conds.append(f'({SQL_MES_INSCRICAO})=?'); params.append(mes_inscricao)
     if status:
         conds.append('status=?'); params.append(status)
     if status_pagamento:
@@ -2459,6 +2474,7 @@ def api_exportar_residentes_csv():
     modalidade = request.args.get('modalidade', '')
     especialidade = request.args.get('especialidade', '')
     mes_ano = request.args.get('mes_ano', '')
+    mes_inscricao = request.args.get('mes_inscricao', '')
     status = request.args.get('status', '')
     status_pagamento = request.args.get('status_pagamento', '')
     busca = request.args.get('busca', '').strip()
@@ -2481,6 +2497,8 @@ def api_exportar_residentes_csv():
             conds.append('especialidade=?'); params.append(especialidade)
     if mes_ano:
         conds.append('mes_ano=?'); params.append(mes_ano)
+    if mes_inscricao:
+        conds.append(f'({SQL_MES_INSCRICAO})=?'); params.append(mes_inscricao)
     if status:
         conds.append('status=?'); params.append(status)
     if status_pagamento:

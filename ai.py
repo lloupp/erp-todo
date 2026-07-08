@@ -57,6 +57,12 @@ SYSTEM_PROMPT = (
     "(por_ano_do_pedido / por_ano_do_pedido_e_status / por_ano_do_pedido_e_especialidade). "
     "Use esses campos para responder perguntas sobre um ano específico (ex.: "
     "\"quantos pedidos vieram em 2025\", \"quantos foram deferidos em 2025\").\n\n"
+    "Você tem acesso amplo e SOMENTE LEITURA aos dados de Residentes & Doutorandos: "
+    "todos os status, especialidades, situação de pagamento, e o estado da fila do "
+    "pipeline de atendimento (pipeline_atendimento — quantos estão parados em cada "
+    "etapa, quais estão críticos). Isso é intencional — pode responder livremente "
+    "com base em qualquer parte do snapshot. O único limite é PII: nunca CPF, "
+    "e-mail ou telefone, porque esses campos nunca são incluídos no snapshot.\n\n"
     "REGRAS IMPORTANTES:\n"
     "- Responda SEMPRE em português do Brasil, de forma clara e objetiva.\n"
     "- Baseie-se EXCLUSIVAMENTE nos dados do SNAPSHOT fornecido abaixo. "
@@ -92,7 +98,11 @@ def montar_snapshot(db):
     ''')
     res_por_esp = rows('''
         SELECT COALESCE(especialidade,'(não informado)') AS especialidade, COUNT(*) AS cnt
-        FROM residentes GROUP BY especialidade ORDER BY cnt DESC LIMIT 20
+        FROM residentes GROUP BY especialidade ORDER BY cnt DESC LIMIT 40
+    ''')
+    res_por_pagamento = rows('''
+        SELECT COALESCE(status_pagamento,'(não informado)') AS status_pagamento, COUNT(*) AS cnt
+        FROM residentes GROUP BY status_pagamento ORDER BY cnt DESC
     ''')
     res_pend = db.execute('''
         SELECT
@@ -105,11 +115,26 @@ def montar_snapshot(db):
         FROM residentes
     ''').fetchone()
 
-    # ── Registros recentes (SEM PII: nome + tipo + especialidade + status/mes) ──
+    # ── Pipeline de atendimento: mesma agregacao de /api/pipeline/dashboard ──
+    pipeline_pendentes_etapa = rows('''
+        SELECT etapa, COUNT(*) AS total FROM pipeline_acoes
+        WHERE situacao='pendente' GROUP BY etapa
+    ''')
+    pipeline_criticos = db.execute('''
+        SELECT COUNT(*) AS total FROM pipeline_acoes
+        WHERE situacao='pendente'
+          AND CAST(julianday('now') - julianday(criado_em) AS INTEGER) > 14
+    ''').fetchone()['total']
+    pipeline_feitos = db.execute(
+        "SELECT COUNT(*) AS total FROM pipeline_acoes WHERE situacao='feita'"
+    ).fetchone()['total']
+
+    # ── Registros recentes (SEM PII: nome + tipo + especialidade + status/mes/pagamento) ──
     res_recentes = rows('''
         SELECT nome, COALESCE(tipo,'') AS tipo, COALESCE(especialidade,'') AS especialidade,
-               status, COALESCE(mes_ano,'') AS mes_ano
-        FROM residentes ORDER BY updated_at DESC LIMIT 15
+               status, COALESCE(status_pagamento,'') AS status_pagamento,
+               COALESCE(mes_ano,'') AS mes_ano, COALESCE(data_inscricao,'') AS data_inscricao
+        FROM residentes ORDER BY updated_at DESC LIMIT 80
     ''')
 
     # ── Por ano em que o PEDIDO foi enviado (data_inscricao, ex: "26/06/2025 12:48") ──
@@ -149,14 +174,20 @@ def montar_snapshot(db):
             'por_status': [dict(r) for r in res_por_status],
             'por_tipo': [dict(r) for r in res_por_tipo],
             'por_especialidade': [dict(r) for r in res_por_esp],
+            'por_status_pagamento': [dict(r) for r in res_por_pagamento],
             'pendencias': dict(res_pend) if res_pend else {},
             'recentes': [dict(r) for r in res_recentes],
             'por_ano_do_pedido': [dict(r) for r in res_por_ano],
             'por_ano_do_pedido_e_status': [dict(r) for r in res_por_ano_status],
             'por_ano_do_pedido_e_especialidade': [dict(r) for r in res_por_ano_especialidade],
         },
+        'pipeline_atendimento': {
+            'pendentes_por_etapa': {str(r['etapa']): r['total'] for r in pipeline_pendentes_etapa},
+            'criticos_mais_de_14_dias': pipeline_criticos,
+            'acoes_concluidas_total': pipeline_feitos,
+        },
         'observacoes': (
-            'Status possíveis: Interessado, Em andamento, Deferido, Confirmado, '
+            'Status possíveis: Interessado, Em andamento, Deferido, Confirmado, Concluído, '
             'Trocado, Indeferido, Desistente, Cancelado, Nao veio. '
             'pendencias.novos/em_andamento/deferidos/confirmados contam por status atual. '
             'pendencias.pag_pendente conta pagamentos pendentes (exclui status encerrados). Valores em R$. '
@@ -165,7 +196,13 @@ def montar_snapshot(db):
             'ser passado ou futuro e não indica quando o pedido foi enviado). Para perguntas do tipo '
             '"quantos pedidos entraram em 2025" ou "quantos foram deferidos em 2025", use '
             'por_ano_do_pedido / por_ano_do_pedido_e_status, não por_status sozinho (que é o total '
-            'histórico, sem filtro de ano).'
+            'histórico, sem filtro de ano). '
+            'recentes traz até 80 registros (não é mais uma amostra pequena) — ainda assim pode não '
+            'cobrir 100% de listas muito longas; para contagens exatas, prefira os campos agregados '
+            '(por_status, por_ano_do_pedido etc.), que são sempre completos. '
+            'pipeline_atendimento reflete a fila de atendimento (etapas 1-8, ver módulo Residentes): '
+            'pendentes_por_etapa mostra quantos residentes estão parados em cada etapa aguardando ação '
+            'humana; criticos_mais_de_14_dias são os que estão parados há mais tempo que o normal.'
         ),
     }
 
