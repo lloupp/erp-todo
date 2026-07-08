@@ -6,7 +6,7 @@ import json
 import smtplib
 import unicodedata
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Carrega .env o mais cedo possivel, antes de qualquer leitura de env var.
 # Cobre todos os pontos de entrada (waitress app:app, run_prod.py, sync_forms.py).
@@ -122,15 +122,61 @@ FORMAS_PAGAMENTO = ['PIX', 'Boleto', 'Cartao', 'Dinheiro', 'Isento', 'Outro']
 TIPOS_RESIDENTE = ['Residente', 'Doutorando']
 MODALIDADES_RESIDENTE = ['Optativo', 'Convenio']
 STATUS_RESIDENTE = [
-    'Interessado', 'Em andamento', 'Deferido', 'Confirmado',
+    'Interessado', 'Em andamento', 'Deferido', 'Confirmado', 'Concluído',
     'Trocado', 'Indeferido', 'Desistente', 'Cancelado', 'Nao veio'
 ]
 STATUS_RESIDENTE_COLORS = {
     'Interessado':  '#6b7280', 'Em andamento': '#f59e0b',
     'Deferido':     '#3b82f6', 'Confirmado':   '#10b981',
+    'Concluído':    '#059669',
     'Trocado':      '#06b6d4', 'Indeferido':   '#dc2626',
     'Desistente':   '#9ca3af', 'Cancelado':    '#ef4444',
     'Nao veio':     '#374151',
+}
+
+# ── Pipeline de atendimento (Residentes) ──────────────────────
+# Cada residente tem no máximo uma ação 'pendente' por vez (a etapa corrente).
+# Ver PIPELINE.md para o desenho completo do fluxo.
+PIPELINE_ETAPAS = {
+    1: 'triagem',
+    2: 'confirmar_aluno',
+    3: 'acionar_chefe',
+    4: 'deferimento',
+    5: 'solicitar_link_financeiro',
+    6: 'enviar_link_docs',
+    7: 'analisar_comprovante',
+    8: 'orientacoes_1o_dia',
+}
+# transições válidas por etapa: resultado -> (proximo_status_residente|None, proxima_etapa|None)
+PIPELINE_TRANSICOES = {
+    1: {
+        'revisado': (None, 2),
+    },
+    2: {
+        'confirmou': ('Em andamento', 3),
+        'desistiu': ('Desistente', None),
+    },
+    3: {
+        'enviado': (None, 4),
+    },
+    4: {
+        'defere': ('Deferido', 5),
+        'indefere': ('Indeferido', None),
+        'trocado': ('Trocado', 3),
+    },
+    5: {
+        'solicitado': (None, 6),
+    },
+    6: {
+        'enviado': (None, 7),
+    },
+    7: {
+        'comprovante_ok': ('Confirmado', 8),
+        'falta_documento': (None, 6),
+    },
+    8: {
+        'enviado': ('Concluído', None),
+    },
 }
 
 MENSAGENS_MODELO_SEED = [
@@ -143,6 +189,21 @@ MENSAGENS_MODELO_SEED = [
      'nome (nome do aluno), tipo (residente/doutorando), modalidade (Optativo/Convenio), '
      'especialidade (nome oficial do contato), periodo (frase ja formatada), '
      'usuario (primeiro nome de quem esta enviando)'),
+    ('whatsapp_financeiro_link', 'Solicitacao de Link ao Financeiro (WhatsApp)',
+     'Olá! Tudo bem?\nGostaria de solicitar a geração do link de pagamento para {{tipo}} {{nome}}, '
+     'especialidade {{especialidade}}, valor R$ {{valor}}, período {{periodo}}.\n'
+     'Encaminho para o cliente assim que receber. Obrigado!',
+     'nome, tipo (residente/doutorando), especialidade, valor, periodo, usuario'),
+    ('whatsapp_cliente_link_docs', 'Link de Pagamento + Documentos ao Cliente (WhatsApp)',
+     'Olá {{nome}}, tudo bem?\nSegue o link de pagamento da sua inscrição: {{link}}. Valor: R$ {{valor}}.\n'
+     'Junto com o pagamento, encaminhe os documentos: {{documentos}}.\n'
+     'Após o pagamento, nos avise com o comprovante. Qualquer dúvida, me chame. Abraço!',
+     'nome, link, valor, documentos, especialidade, usuario'),
+    ('whatsapp_cliente_orientacoes', 'Orientações para o Primeiro Dia (WhatsApp)',
+     'Olá {{nome}}, tudo bem?\nFaltam poucos dias para o início do seu estágio em {{especialidade}} '
+     '({{data_inicio}}). Seguem as orientações para o primeiro dia: {{orientacoes}}. Local: {{local}}.\n'
+     'Confirmar recebimento, por favor. Até logo!',
+     'nome, especialidade, data_inicio, orientacoes, local, usuario'),
 ]
 
 ITENS_POR_PAGINA = 15
@@ -259,7 +320,8 @@ def init_db():
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             nome TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user'
+            role TEXT NOT NULL DEFAULT 'user',
+            last_login DATETIME
         );
 
         CREATE TABLE IF NOT EXISTS estagios (
@@ -333,6 +395,9 @@ def init_db():
             status_pagamento TEXT DEFAULT 'Pendente',
             comprovante_pagamento TEXT,
             observacao TEXT,
+            data_inscricao TEXT,
+            periodo_desejado TEXT,
+            mes_desejado TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -355,6 +420,21 @@ def init_db():
             obs_internato TEXT,
             obs_residencia TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS pipeline_acoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            residente_id INTEGER NOT NULL REFERENCES residentes(id),
+            etapa INTEGER NOT NULL,
+            acao_tipo TEXT NOT NULL,
+            situacao TEXT NOT NULL DEFAULT 'pendente',
+            responsavel TEXT,
+            observacao TEXT,
+            reagendado_para DATE,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            concluido_em DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_residente ON pipeline_acoes(residente_id);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_situacao ON pipeline_acoes(situacao, etapa);
 
         CREATE TABLE IF NOT EXISTS mensagens_modelo (
             chave TEXT PRIMARY KEY,
@@ -2049,6 +2129,62 @@ def api_get_residentes():
     })
 
 
+# ── Pipeline de atendimento (Residentes) ──────────────────────
+# Ver PIPELINE.md para o desenho funcional completo. Regra central: cada
+# residente tem no maximo uma acao 'pendente' por vez (a etapa corrente).
+RESULTADOS_PULADOS = {'indefere', 'desistiu'}
+
+
+def criar_acao_pipeline(db, residente_id, etapa, reagendado_para=None):
+    db.execute('''INSERT INTO pipeline_acoes (residente_id, etapa, acao_tipo, situacao, reagendado_para)
+                  VALUES (?, ?, ?, 'pendente', ?)''',
+               (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para))
+
+
+def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
+    """Marca a acao pendente da etapa atual como feita/pulada, muda o status do
+    residente se aplicavel (com registro em historico_residentes) e cria a
+    proxima acao pendente. Nunca envia mensagem nem dispara nada sozinho."""
+    transicoes = PIPELINE_TRANSICOES.get(etapa_atual, {})
+    if resultado not in transicoes:
+        raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
+    novo_status, proxima_etapa = transicoes[resultado]
+    situacao_acao = 'pulado' if resultado in RESULTADOS_PULADOS else 'feita'
+
+    cur = db.execute('''
+        UPDATE pipeline_acoes SET situacao=?, responsavel=?, observacao=?, concluido_em=CURRENT_TIMESTAMP
+        WHERE residente_id=? AND etapa=? AND situacao='pendente'
+    ''', (situacao_acao, responsavel, observacao, residente_id, etapa_atual))
+    if cur.rowcount == 0:
+        raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
+
+    if novo_status:
+        db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+                   (novo_status, residente_id))
+        db.execute(
+            'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
+            (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel)
+        )
+
+    if proxima_etapa:
+        reagendado_para = None
+        if proxima_etapa == 8:
+            # Etapa 8 (orientacoes 1o dia) so entra na fila com destaque em
+            # T = inicio - 7 dias; sem 'inicio' preenchido, fica pendente sem
+            # data-alvo (cai na fila manual, ver PIPELINE.md passo 8).
+            row = db.execute('SELECT inicio FROM residentes WHERE id=?', (residente_id,)).fetchone()
+            if row and row['inicio']:
+                try:
+                    dt = datetime.strptime(str(row['inicio'])[:10], '%Y-%m-%d') - timedelta(days=7)
+                    reagendado_para = dt.strftime('%Y-%m-%d')
+                except ValueError:
+                    reagendado_para = None
+        criar_acao_pipeline(db, residente_id, proxima_etapa, reagendado_para)
+
+    db.commit()
+    return {'novo_status': novo_status, 'proxima_etapa': proxima_etapa}
+
+
 @app.route('/api/residentes', methods=['POST'])
 @login_required
 def api_create_residente():
@@ -2074,6 +2210,7 @@ def api_create_residente():
         d.get('comprovante_pagamento'), d.get('observacao'),
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'),
     ))
+    criar_acao_pipeline(db, cur.lastrowid, 1)
     db.commit()
     return jsonify({'id': cur.lastrowid}), 201
 
@@ -2140,6 +2277,104 @@ def api_avancar_residente(rid):
     )
     db.commit()
     return jsonify({'status': novo_status})
+
+
+@app.route('/api/residentes/<int:rid>/acao', methods=['POST'])
+@login_required
+def api_residente_acao(rid):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
+        return jsonify({'erro': 'Nao encontrado'}), 404
+    d = request.get_json() or {}
+    etapa = d.get('etapa')
+    resultado = d.get('resultado')
+    observacao = d.get('observacao')
+    if not etapa or not resultado:
+        return jsonify({'erro': 'etapa e resultado sao obrigatorios'}), 400
+    responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
+    try:
+        resultado_pipeline = avancar_pipeline(db, rid, int(etapa), resultado, responsavel, observacao)
+    except ValueError as e:
+        return jsonify({'erro': str(e)}), 400
+    return jsonify(resultado_pipeline)
+
+
+@app.route('/api/pipeline/fila', methods=['GET'])
+@login_required
+def api_pipeline_fila():
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    rows = db.execute('''
+        SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
+               pa.reagendado_para,
+               r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
+               r.email, r.valor, r.comprovante_pagamento,
+               r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+        FROM pipeline_acoes pa
+        JOIN residentes r ON r.id = pa.residente_id
+        WHERE pa.situacao = 'pendente'
+        ORDER BY dias_parado DESC, pa.criado_em ASC
+    ''').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/pipeline/fila/<int:etapa>', methods=['GET'])
+@login_required
+def api_pipeline_fila_etapa(etapa):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    rows = db.execute('''
+        SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
+               pa.reagendado_para,
+               r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
+               r.email, r.valor, r.comprovante_pagamento,
+               r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+        FROM pipeline_acoes pa
+        JOIN residentes r ON r.id = pa.residente_id
+        WHERE pa.situacao = 'pendente' AND pa.etapa = ?
+        ORDER BY dias_parado DESC, pa.criado_em ASC
+    ''', (etapa,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/pipeline/residente/<int:rid>', methods=['GET'])
+@login_required
+def api_pipeline_residente(rid):
+    if current_user.role != 'admin':
+        return jsonify({'erro': 'Acesso negado'}), 403
+    db = get_db()
+    rows = db.execute(
+        'SELECT * FROM pipeline_acoes WHERE residente_id=? ORDER BY criado_em', (rid,)
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/pipeline/dashboard', methods=['GET'])
+@login_required
+def api_pipeline_dashboard():
+    db = get_db()
+    pendentes_por_etapa = db.execute('''
+        SELECT etapa, COUNT(*) as total
+        FROM pipeline_acoes WHERE situacao='pendente'
+        GROUP BY etapa
+    ''').fetchall()
+    criticos = db.execute('''
+        SELECT COUNT(*) as total FROM pipeline_acoes
+        WHERE situacao='pendente'
+          AND CAST(julianday('now') - julianday(criado_em) AS INTEGER) > 14
+    ''').fetchone()['total']
+    feitos = db.execute("SELECT COUNT(*) as total FROM pipeline_acoes WHERE situacao='feita'").fetchone()['total']
+    return jsonify({
+        'pendentes_por_etapa': {str(r['etapa']): r['total'] for r in pendentes_por_etapa},
+        'criticos': criticos,
+        'feitos': feitos,
+    })
 
 
 @app.route('/api/residentes/<int:rid>/pdf')
@@ -2407,7 +2642,7 @@ def api_importar_residentes_excel():
 
     if confirmar:
         for rec in novos:
-            db.execute('''
+            cur = db.execute('''
                 INSERT INTO residentes
                     (nome, email, telefone, tipo, modalidade, especialidade,
                      instituicao_origem, programa_ano, mes_ano, status,
@@ -2419,6 +2654,7 @@ def api_importar_residentes_excel():
                   rec.get('instituicao_origem',''), rec.get('programa_ano',''), rec['mes_ano'],
                   rec['status'], rec['status_pagamento'], rec.get('observacao',''),
                   rec.get('data_inscricao',''), rec.get('periodo_desejado',''), rec.get('mes_desejado','')))
+            criar_acao_pipeline(db, cur.lastrowid, 1)
         db.commit()
 
     return jsonify({
@@ -2529,9 +2765,20 @@ if __name__ == '__main__':
                           ('instituicao_origem', 'TEXT'), ('cpf', 'TEXT'),
                           ('valor', 'REAL'), ('forma_pagamento', 'TEXT'),
                           ('status_pagamento', "TEXT DEFAULT 'Pendente'"),
-                          ('comprovante_pagamento', 'TEXT')]:
+                          ('comprovante_pagamento', 'TEXT'),
+                          ('data_inscricao', 'TEXT'), ('periodo_desejado', 'TEXT'),
+                          ('mes_desejado', 'TEXT')]:
             if res_cols and col not in res_cols:
                 db.execute(f'ALTER TABLE residentes ADD COLUMN {col} {defn}')
+
+        db.execute('''CREATE TABLE IF NOT EXISTS historico_residentes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            residente_id INTEGER NOT NULL REFERENCES residentes(id),
+            status TEXT NOT NULL,
+            observacao TEXT,
+            responsavel TEXT,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
 
         # Contatos da area medica + modelos de mensagem (botoes WhatsApp de Residentes)
         db.execute('''CREATE TABLE IF NOT EXISTS area_medica (
@@ -2566,6 +2813,36 @@ if __name__ == '__main__':
                     [(c.get('especialidade'), c.get('nome'), c.get('celular'), c.get('email'),
                       c.get('obs_internato'), c.get('obs_residencia')) for c in contatos]
                 )
+
+        # Pipeline de atendimento (Residentes) — ver PIPELINE.md
+        db.execute('''CREATE TABLE IF NOT EXISTS pipeline_acoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            residente_id INTEGER NOT NULL REFERENCES residentes(id),
+            etapa INTEGER NOT NULL,
+            acao_tipo TEXT NOT NULL,
+            situacao TEXT NOT NULL DEFAULT 'pendente',
+            responsavel TEXT,
+            observacao TEXT,
+            reagendado_para DATE,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            concluido_em DATETIME
+        )''')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_residente ON pipeline_acoes(residente_id)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_situacao ON pipeline_acoes(situacao, etapa)')
+        # Seed retroativo: cria a acao pendente correspondente ao status atual de
+        # residentes que ja existiam antes da pipeline existir e ainda nao tem
+        # nenhuma pipeline_acoes registrada. So roda uma vez por residente (idempotente).
+        SEED_ETAPA_POR_STATUS = {'Interessado': 1, 'Em andamento': 3}
+        sem_pipeline = db.execute('''
+            SELECT id, status FROM residentes
+            WHERE id NOT IN (SELECT DISTINCT residente_id FROM pipeline_acoes)
+        ''').fetchall()
+        for rid, status in sem_pipeline:
+            etapa = SEED_ETAPA_POR_STATUS.get(status)
+            if etapa:
+                db.execute('''INSERT INTO pipeline_acoes (residente_id, etapa, acao_tipo, situacao)
+                              VALUES (?, ?, ?, 'pendente')''',
+                           (rid, etapa, PIPELINE_ETAPAS[etapa]))
 
         # Seed default admin if no users exist
         user_count = db.execute('SELECT COUNT(*) FROM usuarios').fetchone()[0]

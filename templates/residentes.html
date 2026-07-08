@@ -50,6 +50,17 @@
         <!-- Banner pendências -->
         <div id="welcome-banner" style="padding:0 24px;margin-bottom:4px;"></div>
 
+        <!-- Fila de atendimento (pipeline) — ver PIPELINE.md -->
+        <div id="pipeline-fila-panel" style="display:none;padding:0 24px;margin-bottom:12px;">
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:12px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="togglePipelineFila()">
+                    <strong>&#128203; Fila de Atendimento (Pipeline)</strong>
+                    <span id="pipeline-fila-toggle">&#9660;</span>
+                </div>
+                <div id="pipeline-fila-lista" style="margin-top:10px;display:none;overflow-x:auto;"></div>
+            </div>
+        </div>
+
         <!-- Filtros -->
         <div class="filters">
             <input type="search" id="f-busca" placeholder="Buscar nome, email, CPF..." oninput="debounceLoad()">
@@ -307,6 +318,33 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="fecharModal('modal-area-medica')">Cancelar</button>
                 <a class="btn btn-primary btn-whatsapp" id="am-btn-whatsapp" href="javascript:void(0)" target="_blank" rel="noopener">Abrir WhatsApp</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL AÇÃO DO PIPELINE ═══════════════════ -->
+    <div class="modal-overlay" id="modal-pipeline-acao">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 id="pa-titulo">Ação do Pipeline</h3>
+                <button class="modal-close" onclick="fecharModal('modal-pipeline-acao')">&#10005;</button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <strong id="pa-residente-nome"></strong>
+                    <br><small style="color:var(--color-text-secondary);" id="pa-residente-info"></small>
+                </div>
+                <div id="pa-extra-campos" style="display:flex;flex-direction:column;gap:10px;"></div>
+                <label id="pa-mensagem-label" style="display:none;">Mensagem (editável)
+                    <textarea id="pa-mensagem" rows="5" oninput="atualizarLinkPipelineAcao()" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>
+                </label>
+                <a class="btn btn-secondary btn-whatsapp" id="pa-btn-whatsapp" href="javascript:void(0)" target="_blank" rel="noopener" style="display:none;text-align:center;">Abrir WhatsApp</a>
+                <label>Observação (opcional)
+                    <textarea id="pa-observacao" rows="2" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>
+                </label>
+            </div>
+            <div class="modal-footer" id="pa-botoes" style="flex-wrap:wrap;gap:8px;">
+                <button class="btn btn-ghost" onclick="fecharModal('modal-pipeline-acao')">Cancelar</button>
             </div>
         </div>
     </div>

@@ -109,6 +109,7 @@ async function loadWelcomeBanner() {
             apiFetch('/api/pendencias'),
         ]);
         renderWelcomeBanner(me.nome || 'Usuário', p);
+        if (me.role === 'admin') carregarPipelineFila();
     } catch (_) {}
 }
 
@@ -143,6 +144,232 @@ function renderWelcomeBanner(nome, p) {
             <span style="font-weight:600;color:var(--color-text);white-space:nowrap;">${saudacao()}, ${nome}!${extra}</span>
             ${chips.join('')}
         </div>`;
+}
+
+// ─── Pipeline de Atendimento (fila + ação por etapa) ──────────
+// Ver PIPELINE.md. Nada é enviado automaticamente: cada botão abre o
+// WhatsApp/e-mail com mensagem pré-preenchida e editável antes do envio.
+const PIPELINE_ETAPAS_INFO = {
+    1: { titulo: 'Triagem do cadastro',
+         resultados: [{ resultado: 'revisado', label: 'Revisado', classe: 'btn-primary' }] },
+    2: { titulo: 'Confirmação com o aluno', tipoMensagem: 'aluno',
+         resultados: [
+             { resultado: 'confirmou', label: 'Confirmou', classe: 'btn-primary' },
+             { resultado: 'desistiu', label: 'Desistiu', classe: 'btn-danger' },
+         ] },
+    3: { titulo: 'Acionar chefe de serviço', tipoMensagem: 'area_medica',
+         resultados: [{ resultado: 'enviado', label: 'Enviado', classe: 'btn-primary' }] },
+    4: { titulo: 'Deferimento da vaga',
+         resultados: [
+             { resultado: 'defere', label: 'Defere', classe: 'btn-primary' },
+             { resultado: 'indefere', label: 'Indefere', classe: 'btn-danger' },
+             { resultado: 'trocado', label: 'Trocado', classe: 'btn-secondary' },
+         ] },
+    5: { titulo: 'Solicitar link de pagamento (Financeiro)', tipoMensagem: 'financeiro',
+         resultados: [{ resultado: 'solicitado', label: 'Solicitado', classe: 'btn-primary' }] },
+    6: { titulo: 'Enviar link + documentos ao cliente', tipoMensagem: 'link_docs',
+         resultados: [{ resultado: 'enviado', label: 'Enviado', classe: 'btn-primary' }] },
+    7: { titulo: 'Comprovante e documentos',
+         resultados: [
+             { resultado: 'comprovante_ok', label: 'Comprovante + docs OK', classe: 'btn-primary' },
+             { resultado: 'falta_documento', label: 'Falta documento', classe: 'btn-secondary' },
+         ] },
+    8: { titulo: 'Orientações para o 1º dia', tipoMensagem: 'orientacoes',
+         resultados: [{ resultado: 'enviado', label: 'Enviar orientações', classe: 'btn-primary' }] },
+};
+
+const INPUT_STYLE = 'width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;';
+const TEXTAREA_STYLE = 'width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;';
+
+let pipelineAcaoAtual = null; // { residenteId, etapa, telefone }
+
+function togglePipelineFila() {
+    const lista = document.getElementById('pipeline-fila-lista');
+    const arrow = document.getElementById('pipeline-fila-toggle');
+    if (!lista) return;
+    const abrir = lista.style.display === 'none';
+    lista.style.display = abrir ? 'block' : 'none';
+    arrow.innerHTML = abrir ? '&#9650;' : '&#9660;';
+}
+
+async function carregarPipelineFila() {
+    const painel = document.getElementById('pipeline-fila-panel');
+    if (!painel) return;
+    try {
+        const fila = await apiFetch('/api/pipeline/fila');
+        if (!fila.length) { painel.style.display = 'none'; return; }
+        painel.style.display = 'block';
+        const lista = document.getElementById('pipeline-fila-lista');
+        lista.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
+            <thead><tr style="text-align:left;">
+                <th style="padding:6px;">Residente</th><th>Especialidade</th><th>Etapa</th><th>Parado há</th><th></th>
+            </tr></thead>
+            <tbody>${fila.map(a => {
+                const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
+                let alerta = a.dias_parado > 14 ? 'color:#dc2626;font-weight:600;'
+                    : a.dias_parado > 7 ? 'color:#f59e0b;font-weight:600;' : '';
+                let coluna = `${a.dias_parado}d`;
+                if (a.etapa === 8) {
+                    if (a.reagendado_para) {
+                        const hoje = new Date().toISOString().slice(0, 10);
+                        if (a.reagendado_para <= hoje) {
+                            coluna = 'Enviar hoje!';
+                            alerta = 'color:#dc2626;font-weight:600;';
+                        } else {
+                            coluna = `agendado ${formatarDataBR(a.reagendado_para)}`;
+                            alerta = '';
+                        }
+                    } else {
+                        coluna = 'sem data (fila manual)';
+                        alerta = '';
+                    }
+                }
+                return `<tr style="border-top:1px solid var(--color-border);">
+                    <td style="padding:6px;">${esc(a.nome)}</td>
+                    <td>${esc(a.especialidade || '—')}</td>
+                    <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
+                    <td style="${alerta}">${coluna}</td>
+                    <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Ação</button></td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>`;
+    } catch (_) {
+        painel.style.display = 'none';
+    }
+}
+
+async function abrirModalPipelineAcao(a) {
+    const info = PIPELINE_ETAPAS_INFO[a.etapa];
+    if (!info) return;
+    pipelineAcaoAtual = { residente: a, etapa: a.etapa, telefoneDestino: a.telefone };
+
+    document.getElementById('pa-titulo').textContent = `Etapa ${a.etapa} — ${info.titulo}`;
+    document.getElementById('pa-residente-nome').textContent = `${a.nome} (${a.tipo})`;
+    document.getElementById('pa-residente-info').textContent =
+        `${a.especialidade || '—'} · parado há ${a.dias_parado} dia(s)`;
+    document.getElementById('pa-observacao').value = '';
+
+    const extra = document.getElementById('pa-extra-campos');
+    extra.innerHTML = '';
+    const mensagemLabel = document.getElementById('pa-mensagem-label');
+    const mensagemTxt = document.getElementById('pa-mensagem');
+    const btnWpp = document.getElementById('pa-btn-whatsapp');
+
+    if (info.tipoMensagem === 'aluno') {
+        const primeiroNome = (a.nome || '').trim().split(' ')[0];
+        const template = MENSAGENS_MODELO.whatsapp_aluno || TEMPLATE_ALUNO_FALLBACK;
+        mensagemTxt.value = preencherTemplate(template, { nome: primeiroNome, usuario: USUARIO_LOGADO_NOME });
+        mensagemLabel.style.display = 'block';
+        btnWpp.style.display = 'inline-block';
+    } else if (info.tipoMensagem === 'area_medica') {
+        mensagemTxt.value = montarMensagemAreaMedica(a, { especialidade: a.especialidade });
+        mensagemLabel.style.display = 'block';
+        btnWpp.style.display = 'inline-block';
+    } else if (info.tipoMensagem === 'financeiro') {
+        await carregarAreaMedica();
+        const contatoFin = (AREA_MEDICA || []).find(c => normalizarTexto(c.especialidade) === 'financeiro');
+        pipelineAcaoAtual.telefoneDestino = contatoFin ? contatoFin.celular : null;
+        if (!contatoFin) {
+            showToast('Contato "Financeiro" não cadastrado em Configurações > Área Médica.', 'error');
+        }
+        const tipoLower = a.tipo === 'Doutorando' ? 'doutorando' : 'residente';
+        const template = MENSAGENS_MODELO.whatsapp_financeiro_link || '';
+        mensagemTxt.value = preencherTemplate(template, {
+            nome: a.nome, tipo: tipoLower, especialidade: a.especialidade || '',
+            valor: a.valor != null ? Number(a.valor).toFixed(2) : '—',
+            periodo: montarPeriodoTexto(a), usuario: USUARIO_LOGADO_NOME,
+        });
+        mensagemLabel.style.display = 'block';
+        btnWpp.style.display = 'inline-block';
+    } else if (info.tipoMensagem === 'link_docs') {
+        extra.innerHTML = `
+            <label>Link de pagamento
+                <input type="text" id="pa-campo-link" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
+            </label>
+            <label>Documentos necessários
+                <input type="text" id="pa-campo-documentos" value="CRM, termo de compromisso, comprovante de vacinação, RG, foto 3x4" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
+            </label>`;
+        mensagemLabel.style.display = 'block';
+        btnWpp.style.display = 'inline-block';
+        recalcularMensagemPipeline();
+    } else if (info.tipoMensagem === 'orientacoes') {
+        extra.innerHTML = `
+            <label>Local
+                <input type="text" id="pa-campo-local" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
+            </label>
+            <label>Orientações
+                <textarea id="pa-campo-orientacoes" rows="3" oninput="recalcularMensagemPipeline()" style="${TEXTAREA_STYLE}"></textarea>
+            </label>`;
+        mensagemLabel.style.display = 'block';
+        btnWpp.style.display = 'inline-block';
+        recalcularMensagemPipeline();
+    } else {
+        mensagemLabel.style.display = 'none';
+        btnWpp.style.display = 'none';
+    }
+    atualizarLinkPipelineAcao();
+
+    const botoes = document.getElementById('pa-botoes');
+    botoes.innerHTML = '<button class="btn btn-ghost" onclick="fecharModal(\'modal-pipeline-acao\')">Cancelar</button>' +
+        info.resultados.map(r =>
+            `<button class="btn ${r.classe}" onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
+        ).join('');
+
+    abrirModal('modal-pipeline-acao');
+}
+
+function recalcularMensagemPipeline() {
+    if (!pipelineAcaoAtual) return;
+    const a = pipelineAcaoAtual.residente;
+    const info = PIPELINE_ETAPAS_INFO[pipelineAcaoAtual.etapa];
+    if (info.tipoMensagem === 'link_docs') {
+        const link = (document.getElementById('pa-campo-link').value || '').trim() || '(link pendente)';
+        const documentos = (document.getElementById('pa-campo-documentos').value || '').trim();
+        const template = MENSAGENS_MODELO.whatsapp_cliente_link_docs || '';
+        document.getElementById('pa-mensagem').value = preencherTemplate(template, {
+            nome: a.nome, link, valor: a.valor != null ? Number(a.valor).toFixed(2) : '—',
+            documentos, especialidade: a.especialidade || '', usuario: USUARIO_LOGADO_NOME,
+        });
+    } else if (info.tipoMensagem === 'orientacoes') {
+        const local = (document.getElementById('pa-campo-local').value || '').trim();
+        const orientacoes = (document.getElementById('pa-campo-orientacoes').value || '').trim();
+        const template = MENSAGENS_MODELO.whatsapp_cliente_orientacoes || '';
+        document.getElementById('pa-mensagem').value = preencherTemplate(template, {
+            nome: a.nome, especialidade: a.especialidade || '',
+            data_inicio: formatarDataBR(a.inicio) || '(data a definir)', orientacoes, local,
+            usuario: USUARIO_LOGADO_NOME,
+        });
+    }
+    atualizarLinkPipelineAcao();
+}
+
+function atualizarLinkPipelineAcao() {
+    const btn = document.getElementById('pa-btn-whatsapp');
+    if (!pipelineAcaoAtual || btn.style.display === 'none') return;
+    const mensagem = document.getElementById('pa-mensagem').value;
+    const link = whatsappLinkDireto(pipelineAcaoAtual.telefoneDestino, mensagem);
+    if (link) {
+        btn.href = link;
+        btn.classList.remove('btn-disabled');
+    } else {
+        btn.href = 'javascript:void(0)';
+        btn.classList.add('btn-disabled');
+    }
+}
+
+async function executarAcaoPipeline(resultado) {
+    if (!pipelineAcaoAtual) return;
+    const observacao = document.getElementById('pa-observacao').value.trim();
+    try {
+        await apiFetch(`/api/residentes/${pipelineAcaoAtual.residente.residente_id}/acao`, {
+            method: 'POST',
+            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null }),
+        });
+        fecharModal('modal-pipeline-acao');
+        showToast('Ação registrada.', 'success');
+        carregarPipelineFila();
+        loadResidentes();
+    } catch (_) {}
 }
 
 async function loadUserInfo() {
@@ -317,19 +544,17 @@ function formatarDataBR(iso) {
 
 const TEMPLATE_AREA_MEDICA_FALLBACK = 'Olá! Tudo bem?\nGostaria de verificar a disponibilidade de vaga para Estágio {{modalidade}} em {{especialidade}} para o {{tipo}} {{nome}}, {{periodo}}.\nFico no aguardo do retorno. Muito obrigado!';
 
+function montarPeriodoTexto(r) {
+    if (r.inicio && r.termino) return `no período de ${formatarDataBR(r.inicio)} a ${formatarDataBR(r.termino)}`;
+    if (r.periodo_desejado) return `no período de ${r.periodo_desejado}`;
+    if (r.mes_desejado) return `em ${r.mes_desejado}`;
+    return `no mês ${(r.mes_ano || '').slice(0, 7)}`;
+}
+
 function montarMensagemAreaMedica(r, contato) {
     const tipoLower = r.tipo === 'Doutorando' ? 'doutorando' : 'residente';
     const modalidade = r.modalidade || 'Optativo';
-    let periodo;
-    if (r.inicio && r.termino) {
-        periodo = `no período de ${formatarDataBR(r.inicio)} a ${formatarDataBR(r.termino)}`;
-    } else if (r.periodo_desejado) {
-        periodo = `no período de ${r.periodo_desejado}`;
-    } else if (r.mes_desejado) {
-        periodo = `em ${r.mes_desejado}`;
-    } else {
-        periodo = `no mês ${(r.mes_ano || '').slice(0, 7)}`;
-    }
+    const periodo = montarPeriodoTexto(r);
     const template = MENSAGENS_MODELO.whatsapp_area_medica || TEMPLATE_AREA_MEDICA_FALLBACK;
     return preencherTemplate(template, {
         nome: r.nome,
