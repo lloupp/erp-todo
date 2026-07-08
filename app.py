@@ -1230,7 +1230,7 @@ def api_ai_chat():
         snapshot = ai.montar_snapshot(get_db())
         mensagens = ai.montar_mensagens(snapshot, historico)
         inicio = time.time()
-        resposta = ai.chamar_openrouter(mensagens)
+        resposta = ai.chamar_openrouter(mensagens, max_tokens=4096)
         ms = int((time.time() - inicio) * 1000)
         ultima = (historico[-1].get('content') or '')[:120]
         app.logger.info(f'IA chat OK ({ms}ms): "{ultima}"')

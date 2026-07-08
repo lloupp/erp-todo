@@ -154,6 +154,29 @@ def montar_snapshot(db):
         WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
         GROUP BY ano HAVING ano IS NOT NULL ORDER BY ano DESC
     ''')
+    # Mesma ideia, granularidade de mes ('AAAA-MM') -- poucas dezenas de linhas
+    # no total (um residente so tem uma data_inscricao), pronto pra IA listar
+    # sem precisar "pensar"/somar registro por registro (o que estoura o
+    # max_tokens em modelos de raciocinio como o hy3:free).
+    MES_PEDIDO_EXPR = '''
+        CASE
+            WHEN data_inscricao LIKE '__/__/____%' THEN substr(data_inscricao,7,4) || '-' || substr(data_inscricao,4,2)
+            WHEN data_inscricao LIKE '____-__-__%' THEN substr(data_inscricao,1,7)
+            ELSE NULL
+        END
+    '''
+    res_por_mes = rows(f'''
+        SELECT {MES_PEDIDO_EXPR} AS mes, COUNT(*) AS cnt
+        FROM residentes
+        WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
+        GROUP BY mes HAVING mes IS NOT NULL ORDER BY mes DESC
+    ''')
+    res_por_mes_status = rows(f'''
+        SELECT {MES_PEDIDO_EXPR} AS mes, status, COUNT(*) AS cnt
+        FROM residentes
+        WHERE data_inscricao IS NOT NULL AND data_inscricao != ''
+        GROUP BY mes, status HAVING mes IS NOT NULL ORDER BY mes DESC, cnt DESC
+    ''')
     res_por_ano_status = rows(f'''
         SELECT {ANO_PEDIDO_EXPR} AS ano, status, COUNT(*) AS cnt
         FROM residentes
@@ -180,6 +203,8 @@ def montar_snapshot(db):
             'por_ano_do_pedido': [dict(r) for r in res_por_ano],
             'por_ano_do_pedido_e_status': [dict(r) for r in res_por_ano_status],
             'por_ano_do_pedido_e_especialidade': [dict(r) for r in res_por_ano_especialidade],
+            'por_mes_do_pedido': [dict(r) for r in res_por_mes],
+            'por_mes_do_pedido_e_status': [dict(r) for r in res_por_mes_status],
         },
         'pipeline_atendimento': {
             'pendentes_por_etapa': {str(r['etapa']): r['total'] for r in pipeline_pendentes_etapa},
@@ -197,6 +222,10 @@ def montar_snapshot(db):
             '"quantos pedidos entraram em 2025" ou "quantos foram deferidos em 2025", use '
             'por_ano_do_pedido / por_ano_do_pedido_e_status, não por_status sozinho (que é o total '
             'histórico, sem filtro de ano). '
+            'por_mes_do_pedido / por_mes_do_pedido_e_status têm a MESMA lógica, granularidade de mês '
+            '("AAAA-MM"). Para "liste os meses" ou "quantos pedidos por mês", copie esses campos '
+            'DIRETO — já vêm prontos e completos, não precisa contar registro por registro em '
+            '"recentes" (isso consome espaço de raciocínio à toa e pode cortar a resposta pela metade). '
             'recentes traz até 80 registros (não é mais uma amostra pequena) — ainda assim pode não '
             'cobrir 100% de listas muito longas; para contagens exatas, prefira os campos agregados '
             '(por_status, por_ano_do_pedido etc.), que são sempre completos. '
