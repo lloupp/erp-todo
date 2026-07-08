@@ -109,7 +109,7 @@ async function loadWelcomeBanner() {
             apiFetch('/api/pendencias'),
         ]);
         renderWelcomeBanner(me.nome || 'Usuário', p);
-        if (me.role === 'admin') carregarPipelineFila();
+        carregarPipelineFila();
     } catch (_) {}
 }
 

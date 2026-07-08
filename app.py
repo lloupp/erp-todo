@@ -2282,8 +2282,6 @@ def api_avancar_residente(rid):
 @app.route('/api/residentes/<int:rid>/acao', methods=['POST'])
 @login_required
 def api_residente_acao(rid):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
@@ -2304,8 +2302,6 @@ def api_residente_acao(rid):
 @app.route('/api/pipeline/fila', methods=['GET'])
 @login_required
 def api_pipeline_fila():
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
@@ -2325,8 +2321,6 @@ def api_pipeline_fila():
 @app.route('/api/pipeline/fila/<int:etapa>', methods=['GET'])
 @login_required
 def api_pipeline_fila_etapa(etapa):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
@@ -2346,8 +2340,6 @@ def api_pipeline_fila_etapa(etapa):
 @app.route('/api/pipeline/residente/<int:rid>', methods=['GET'])
 @login_required
 def api_pipeline_residente(rid):
-    if current_user.role != 'admin':
-        return jsonify({'erro': 'Acesso negado'}), 403
     db = get_db()
     rows = db.execute(
         'SELECT * FROM pipeline_acoes WHERE residente_id=? ORDER BY criado_em', (rid,)
