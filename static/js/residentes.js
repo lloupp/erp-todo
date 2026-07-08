@@ -192,59 +192,49 @@ function togglePipelineFila() {
     arrow.innerHTML = abrir ? '&#9650;' : '&#9660;';
 }
 
-let pipelineFilaCache = []; // ultima fila carregada — usado para avancar/pular sem recarregar a tela
-
-function renderPipelineFilaTable(fila) {
+async function carregarPipelineFila() {
     const painel = document.getElementById('pipeline-fila-panel');
     if (!painel) return;
-    if (!fila.length) { painel.style.display = 'none'; return; }
-    painel.style.display = 'block';
-    const lista = document.getElementById('pipeline-fila-lista');
-    lista.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
-        <thead><tr style="text-align:left;">
-            <th style="padding:6px;">Residente</th><th>Especialidade</th><th>Etapa</th><th>Parado há</th><th></th>
-        </tr></thead>
-        <tbody>${fila.map(a => {
-            const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
-            let alerta = a.dias_parado > 14 ? 'color:#dc2626;font-weight:600;'
-                : a.dias_parado > 7 ? 'color:#f59e0b;font-weight:600;' : '';
-            let coluna = `${a.dias_parado}d`;
-            if (a.etapa === 8) {
-                if (a.reagendado_para) {
-                    const hoje = new Date().toISOString().slice(0, 10);
-                    if (a.reagendado_para <= hoje) {
-                        coluna = 'Enviar hoje!';
-                        alerta = 'color:#dc2626;font-weight:600;';
-                    } else {
-                        coluna = `agendado ${formatarDataBR(a.reagendado_para)}`;
-                        alerta = '';
-                    }
-                } else {
-                    coluna = 'sem data (fila manual)';
-                    alerta = '';
-                }
-            }
-            return `<tr style="border-top:1px solid var(--color-border);">
-                <td style="padding:6px;">${esc(a.nome)}</td>
-                <td>${esc(a.especialidade || '—')}</td>
-                <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
-                <td style="${alerta}">${coluna}</td>
-                <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Ação</button></td>
-            </tr>`;
-        }).join('')}</tbody>
-    </table>`;
-}
-
-async function carregarPipelineFila() {
     try {
         const fila = await apiFetch('/api/pipeline/fila');
-        pipelineFilaCache = fila;
-        renderPipelineFilaTable(fila);
-        return fila;
+        if (!fila.length) { painel.style.display = 'none'; return; }
+        painel.style.display = 'block';
+        const lista = document.getElementById('pipeline-fila-lista');
+        lista.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
+            <thead><tr style="text-align:left;">
+                <th style="padding:6px;">Residente</th><th>Especialidade</th><th>Etapa</th><th>Parado há</th><th></th>
+            </tr></thead>
+            <tbody>${fila.map(a => {
+                const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
+                let alerta = a.dias_parado > 14 ? 'color:#dc2626;font-weight:600;'
+                    : a.dias_parado > 7 ? 'color:#f59e0b;font-weight:600;' : '';
+                let coluna = `${a.dias_parado}d`;
+                if (a.etapa === 8) {
+                    if (a.reagendado_para) {
+                        const hoje = new Date().toISOString().slice(0, 10);
+                        if (a.reagendado_para <= hoje) {
+                            coluna = 'Enviar hoje!';
+                            alerta = 'color:#dc2626;font-weight:600;';
+                        } else {
+                            coluna = `agendado ${formatarDataBR(a.reagendado_para)}`;
+                            alerta = '';
+                        }
+                    } else {
+                        coluna = 'sem data (fila manual)';
+                        alerta = '';
+                    }
+                }
+                return `<tr style="border-top:1px solid var(--color-border);">
+                    <td style="padding:6px;">${esc(a.nome)}</td>
+                    <td>${esc(a.especialidade || '—')}</td>
+                    <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
+                    <td style="${alerta}">${coluna}</td>
+                    <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Ação</button></td>
+                </tr>`;
+            }).join('')}</tbody>
+        </table>`;
     } catch (_) {
-        const painel = document.getElementById('pipeline-fila-panel');
-        if (painel) painel.style.display = 'none';
-        return [];
+        painel.style.display = 'none';
     }
 }
 
@@ -319,28 +309,13 @@ async function abrirModalPipelineAcao(a) {
     }
     atualizarLinkPipelineAcao();
 
-    const temProximo = pipelineFilaCache.some(x => x.etapa === a.etapa && x.residente_id !== a.residente_id);
     const botoes = document.getElementById('pa-botoes');
     botoes.innerHTML = '<button class="btn btn-ghost" onclick="fecharModal(\'modal-pipeline-acao\')">Cancelar</button>' +
-        (temProximo ? '<button class="btn btn-ghost" onclick="pularAcaoPipeline()">Pular ›</button>' : '') +
         info.resultados.map(r =>
             `<button class="btn ${r.classe}" onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
         ).join('');
 
     abrirModal('modal-pipeline-acao');
-}
-
-// Pula para a proxima pendencia da mesma etapa sem registrar nenhuma acao
-// (util quando o caso atual precisa ser tratado depois, fora de ordem).
-function pularAcaoPipeline() {
-    if (!pipelineAcaoAtual) return;
-    const atual = pipelineAcaoAtual.residente;
-    const proximo = pipelineFilaCache.find(x => x.etapa === atual.etapa && x.residente_id !== atual.residente_id);
-    if (proximo) {
-        abrirModalPipelineAcao(proximo);
-    } else {
-        fecharModal('modal-pipeline-acao');
-    }
 }
 
 function recalcularMensagemPipeline() {
@@ -384,24 +359,16 @@ function atualizarLinkPipelineAcao() {
 
 async function executarAcaoPipeline(resultado) {
     if (!pipelineAcaoAtual) return;
-    const etapaConcluida = pipelineAcaoAtual.etapa;
-    const residenteIdConcluido = pipelineAcaoAtual.residente.residente_id;
     const observacao = document.getElementById('pa-observacao').value.trim();
     try {
-        await apiFetch(`/api/residentes/${residenteIdConcluido}/acao`, {
+        await apiFetch(`/api/residentes/${pipelineAcaoAtual.residente.residente_id}/acao`, {
             method: 'POST',
-            body: JSON.stringify({ etapa: etapaConcluida, resultado, observacao: observacao || null }),
+            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null }),
         });
+        fecharModal('modal-pipeline-acao');
         showToast('Ação registrada.', 'success');
+        carregarPipelineFila();
         loadResidentes();
-
-        const fila = await carregarPipelineFila();
-        const proximo = fila.find(x => x.etapa === etapaConcluida && x.residente_id !== residenteIdConcluido);
-        if (proximo) {
-            abrirModalPipelineAcao(proximo);
-        } else {
-            fecharModal('modal-pipeline-acao');
-        }
     } catch (_) {}
 }
 
