@@ -104,7 +104,8 @@ O módulo Observership (`tipo_id=1` em `estagios`) é **gerenciado externamente 
 
 ## Produção (Windows)
 
-- Servidor: **Waitress** (`start_erp.bat` → `waitress app:app`, 8 threads). `.env` é carregado automaticamente no topo de `app.py` (cobre todos os pontos de entrada). `SECRET_KEY` é **obrigatória** (sem fallback); ausência derruba o boot, exceto com `FLASK_DEBUG=1`.
+- Servidor: **Waitress** (`start_erp.bat`, fora do repo em `C:\...\erp-todo\start_erp.bat` → `waitress app:app`, **24 threads**). `.env` é carregado automaticamente no topo de `app.py` (cobre todos os pontos de entrada). `SECRET_KEY` é **obrigatória** (sem fallback); ausência derruba o boot, exceto com `FLASK_DEBUG=1`.
+  - Subiu de 8 para 24 threads porque as chamadas de IA (`/api/ai/chat`, `/api/ai/chat/stream`) prendem uma thread do Waitress por 17-90+ segundos esperando a OpenRouter (é uma chamada de rede síncrona dentro da view) — com poucas pessoas usando a IA ao mesmo tempo, 8 threads esgotavam e o resto do site (`Task queue depth` nos logs) ficava na fila. Threads a mais é seguro aqui porque o gargalo é I/O (rede), não CPU — o GIL é liberado durante a espera. Se voltar a acontecer com uso mais pesado, o próximo passo é isolar as rotas de IA num worker pool separado em vez de só aumentar threads.
 - SQLite em **WAL mode** (`get_db()`), com `busy_timeout=5000` — necessário para múltiplas threads. Backups devem usar a API de backup (ver `backup_db.py`), nunca `copy` do `.db` cru (perde dados do `-wal`).
 - Backup: `backup_erp.bat` → `backup_db.py` (backup consistente WAL-safe + cópia off-site automática para OneDrive quando instalado + retenção 7 dias). Agendado no Task Scheduler (`ERP-Todo-Backup`, diário 02h).
 - Auto-start: Task `ERP-Todo-Server` (gatilho no logon). Endpoint `/health` (sem auth) para monitoramento.
