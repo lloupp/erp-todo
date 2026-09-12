@@ -56,7 +56,7 @@ install_production_guards(app)
 @app.after_request
 def _block_external_login_redirects(response):
     """Prevent the login ``next`` parameter from becoming an open redirect."""
-    if request.path != '/login' or not response.is_redirect:
+    if request.path != '/login' or response.status_code not in {301, 302, 303, 307, 308}:
         return response
     location = response.headers.get('Location', '')
     target = urlsplit(location)
