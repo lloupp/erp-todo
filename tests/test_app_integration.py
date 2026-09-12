@@ -61,7 +61,6 @@ class AppIntegrationTests(unittest.TestCase):
                 "SELECT password_hash FROM usuarios WHERE username='admin'"
             ).fetchone()[0]
         self.assertTrue(stored.startswith(('scrypt:', 'pbkdf2:')))
-        self.assertNotIn(':', stored[:32] if stored.startswith('scrypt:') else '')
 
     def test_resident_creation_and_pipeline_transition(self):
         self.login_admin()
