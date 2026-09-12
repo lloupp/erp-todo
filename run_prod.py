@@ -1,8 +1,13 @@
 import os
+
 from dotenv import load_dotenv
-load_dotenv()
 from waitress import serve
-from app import app
+
+load_dotenv()
+
+from app import MENSAGENS_MODELO_SEED, PIPELINE_ETAPAS, app, hash_password
+from db_migrations import ensure_database
+
 
 if __name__ == '__main__':
     secret = os.environ.get('SECRET_KEY')
@@ -12,6 +17,15 @@ if __name__ == '__main__':
             '  Windows: set SECRET_KEY=sua-chave-aqui\n'
             '  Linux:   export SECRET_KEY=sua-chave-aqui'
         )
+
+    ensure_database(
+        app.config['DATABASE'],
+        hash_password=hash_password,
+        message_seed=MENSAGENS_MODELO_SEED,
+        pipeline_etapas=PIPELINE_ETAPAS,
+        data_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'),
+    )
+
     app.secret_key = secret
     port = int(os.environ.get('PORT', 5000))
     threads = int(os.environ.get('WAITRESS_THREADS', 16))
