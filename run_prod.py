@@ -1,8 +1,12 @@
 import os
+
 from dotenv import load_dotenv
-load_dotenv()
 from waitress import serve
-from app import app
+
+load_dotenv()
+
+from wsgi import app
+
 
 if __name__ == '__main__':
     secret = os.environ.get('SECRET_KEY')
@@ -12,6 +16,7 @@ if __name__ == '__main__':
             '  Windows: set SECRET_KEY=sua-chave-aqui\n'
             '  Linux:   export SECRET_KEY=sua-chave-aqui'
         )
+
     app.secret_key = secret
     port = int(os.environ.get('PORT', 5000))
     threads = int(os.environ.get('WAITRESS_THREADS', 16))
