@@ -62,6 +62,15 @@ class AppIntegrationTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertTrue(stored.startswith(('scrypt:', 'pbkdf2:')))
 
+    def test_login_blocks_external_next_redirect(self):
+        response = self.client.post(
+            '/login?next=https://evil.example/phish',
+            data={'username': 'admin', 'password': 'Strong-Test-Password-123!'},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/residentes')
+
     def test_resident_creation_and_pipeline_transition(self):
         self.login_admin()
         created = self.client.post('/api/residentes', json={
