@@ -9,8 +9,10 @@ and in ``wsgi.py`` through the idempotent database bootstrap.
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
+from flask import request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
@@ -23,6 +25,7 @@ if __name__ == '__main__' and not os.environ.get('SECRET_KEY'):
 
 import legacy_app as _legacy
 from password_security import hash_password, verify_password
+from production_guards import install_production_guards
 
 # Route functions are defined in legacy_app and resolve globals in that module,
 # so patch the password helpers there before serving any requests.
@@ -44,6 +47,22 @@ app = _legacy.app
 # file without mutating the repository working tree.
 if os.environ.get('ERP_DATABASE'):
     app.config['DATABASE'] = os.environ['ERP_DATABASE']
+
+# Install the same authorization/security-header layer for every supported
+# entry point. The installer is idempotent, so wsgi.py may call it again safely.
+install_production_guards(app)
+
+
+@app.after_request
+def _block_external_login_redirects(response):
+    """Prevent the login ``next`` parameter from becoming an open redirect."""
+    if request.path != '/login' or not response.is_redirect:
+        return response
+    location = response.headers.get('Location', '')
+    target = urlsplit(location)
+    if target.scheme or target.netloc or location.startswith('//'):
+        response.headers['Location'] = '/residentes'
+    return response
 
 
 def bootstrap_database() -> None:
