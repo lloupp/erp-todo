@@ -13,19 +13,24 @@ pip install -r requirements.txt
 
 ## Execução
 
-```bash
-# Desenvolvimento (debug ativo, reload automático)
-python app.py
+Em produção, use sempre o entrypoint endurecido (`run_prod.py` no Windows/Waitress ou `wsgi:app` no Gunicorn). Ele executa migrações aditivas/idempotentes antes de servir a aplicação, instala as proteções HTTP e usa hashing adaptativo para novas senhas.
 
-# Produção — Windows VPS (Waitress, sem debug)
-copy .env.example .env        # preencher SECRET_KEY
+```bash
+# Produção — Windows VPS (Waitress)
+copy .env.example .env
+# preencher SECRET_KEY e, somente no primeiro banco sem usuários,
+# BOOTSTRAP_ADMIN_PASSWORD
 python run_prod.py
+
+# Produção — Linux (Gunicorn)
+gunicorn -c gunicorn.conf.py wsgi:app
 ```
 
-O banco SQLite é criado automaticamente na primeira execução.
+O banco SQLite é criado automaticamente pelo entrypoint de produção. Em uma instalação nova não existem credenciais padrão: o primeiro administrador é criado com `BOOTSTRAP_ADMIN_PASSWORD` (e, opcionalmente, `BOOTSTRAP_ADMIN_USERNAME`/`BOOTSTRAP_ADMIN_NAME`). Depois do primeiro bootstrap, remova a senha de bootstrap do ambiente/.env.
 
-Acesse: `http://localhost:5000`  
-Credenciais padrão: `admin / admin` e `user / user`.
+> `python app.py` é mantido apenas como caminho legado de desenvolvimento. Não use esse comando para inicializar ou migrar banco de produção.
+
+Acesse: `http://localhost:5000`.
 
 ## Funcionalidades
 
@@ -119,14 +124,12 @@ Cada relatório tem preview inline e exportação CSV pronta para Excel.
 # 1. Instalar dependências
 pip install -r requirements.txt
 
-# 2. Inicializar banco (só na primeira vez)
-python app.py
-
-# 3. Configurar variáveis de ambiente
+# 2. Configurar variáveis de ambiente
 copy .env.example .env
-# Editar .env e preencher SECRET_KEY
+# Preencher SECRET_KEY.
+# Se o banco ainda não possuir usuários, preencher também BOOTSTRAP_ADMIN_PASSWORD.
 
-# 4. Iniciar servidor de produção
+# 3. Iniciar servidor de produção; o bootstrap/migração segura roda antes do Waitress
 python run_prod.py
 ```
 
@@ -134,6 +137,17 @@ Para gerar uma `SECRET_KEY` segura:
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+Após o primeiro acesso bem-sucedido em um banco novo, remova `BOOTSTRAP_ADMIN_PASSWORD` do `.env`.
+
+## Testes / quality gate
+
+```bash
+python -m compileall -q .
+python -m unittest discover -s tests -v
+```
+
+O workflow `.github/workflows/quality.yml` executa essas verificações em pushes e pull requests.
 
 ## Backup
 
@@ -153,10 +167,4 @@ Backups são salvos em `backups/` e removidos automaticamente após 7 dias.
 
 ## Notificações por e-mail
 
-Desabilitadas por padrão. Para habilitar (Microsoft/Outlook):
-
-```bash
-SMTP_ENABLED=true SMTP_HOST=smtp.office365.com SMTP_PORT=587 \
-SMTP_USER=voce@hospital.com.br SMTP_PASS=senha SMTP_FROM=voce@hospital.com.br \
-python app.py
-```
+Desabilitadas por padrão. Configure `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` no `.env`; reinicie o entrypoint de produção depois da alteração.
