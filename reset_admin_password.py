@@ -1,24 +1,18 @@
 """
-Reseta a senha do usuário 'admin' diretamente no banco.
+Reseta a senha de um usuário diretamente no banco.
 A senha é digitada de forma oculta (getpass) e nunca fica visível na tela
 nem é passada como argumento — só existe na memória deste processo.
 
 Uso:
     python reset_admin_password.py
 """
+import getpass
 import os
 import sqlite3
-import hashlib
-import getpass
+
+from password_security import hash_password
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'estagios.db')
-
-
-def hash_password(password):
-    """Mesmo esquema usado em app.py: salt:sha256(salt+senha)."""
-    salt = os.urandom(16).hex()
-    h = hashlib.sha256((salt + password).encode()).hexdigest()
-    return f'{salt}:{h}'
 
 
 def main():
