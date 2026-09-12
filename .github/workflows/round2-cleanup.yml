@@ -1,0 +1,39 @@
+name: round2-cleanup
+
+on:
+  push:
+    branches: [gauntlet/quality-9-round2]
+    paths:
+      - scripts/round2_cleanup.py
+      - .github/workflows/round2-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gauntlet/quality-9-round2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply deterministic cleanup
+        run: python scripts/round2_cleanup.py
+      - name: Verify dangerous legacy paths are gone
+        run: |
+          ! grep -q "def init_db" app.py
+          ! grep -q "UPDATE estagios SET etapa=8 WHERE etapa=7" app.py
+          ! grep -q "hash_password('admin')" app.py
+          grep -q "from password_security import hash_password, verify_password" app.py
+      - name: Remove one-shot helper and commit result
+        run: |
+          rm scripts/round2_cleanup.py
+          rm .github/workflows/round2-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py scripts/round2_cleanup.py .github/workflows/round2-cleanup.yml
+          git commit -m "fix: remove destructive legacy startup path"
+          git push origin HEAD:gauntlet/quality-9-round2
