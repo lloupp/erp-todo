@@ -13,6 +13,8 @@ class ReportsUiRegressionTests(unittest.TestCase):
         self.assertIn('relatorios_dashboard.js', html)
         self.assertIn('Fila por etapa', html)
         self.assertIn('Pagamentos pendentes', html)
+        self.assertIn('id="export-current-reports"', html)
+        self.assertIn('Exportar CSV', html)
 
         legacy_stage_labels = (
             'Venda realizada',
@@ -33,6 +35,17 @@ class ReportsUiRegressionTests(unittest.TestCase):
         self.assertIn("'/api/dashboard'", js)
         self.assertNotIn('/api/residentes?page=', js)
         self.assertNotIn('innerHTML', js)
+
+    def test_current_export_is_aggregated_and_spreadsheet_safe(self):
+        js = (ROOT / 'static' / 'js' / 'relatorios_dashboard.js').read_text(encoding='utf-8')
+
+        self.assertIn('buildCurrentReportCsv', js)
+        self.assertIn('latestSnapshot = { dashboard, pipeline, pending, month }', js)
+        self.assertIn("new Blob([csv], { type: 'text/csv;charset=utf-8' })", js)
+        self.assertIn('relatorio_gerencial_atual', js)
+        self.assertIn("/^[=+\\-@]/", js)
+        self.assertNotIn('nome, email', js.lower())
+        self.assertNotIn('/api/residentes/exportar-csv', js)
 
 
 if __name__ == '__main__':
