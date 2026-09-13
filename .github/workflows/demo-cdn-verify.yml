@@ -1,0 +1,30 @@
+name: verify-public-demo-cdn
+
+on:
+  push:
+    branches: ["demo-public"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify immutable public demo content
+        env:
+          DEMO_URL: https://cdn.jsdelivr.net/gh/lloupp/erp-todo@demo-public/demo/index.html
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 6 --retry-delay 5 --retry-all-errors \
+            "${DEMO_URL}?verify=${GITHUB_SHA}" -o /tmp/demo.html
+          test -s /tmp/demo.html
+          grep -q 'DEMO · DADOS FICTÍCIOS' /tmp/demo.html
+          grep -q 'Exportar CSV' /tmp/demo.html
+          grep -q 'example.com' /tmp/demo.html
+          if grep -Eqi '@gmail\.com|@hotmail\.com|@outlook\.com' /tmp/demo.html; then
+            echo 'Unexpected non-demo email domain found'
+            exit 1
+          fi
+          echo "Public demo verified: ${DEMO_URL}"
