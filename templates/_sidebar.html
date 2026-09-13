@@ -38,5 +38,8 @@
         .catch(function () {});
 })();
 </script>
+{% if active_page == 'residentes' %}
+<script src="/static/js/residentes_ux.js?v={{ range(1,99999) | random }}"></script>
+{% endif %}
 <!-- Assistente IA (botão flutuante global) -->
 <script src="/static/js/ai.js?v={{ range(1,99999) | random }}"></script>
