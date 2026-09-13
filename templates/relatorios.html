@@ -5,102 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatórios - Estágios Médicos</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        .rel-card {
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: 10px;
-            margin-bottom: 24px;
-            overflow: hidden;
-        }
-        .rel-card-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--color-border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-        .rel-card-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--color-text);
-        }
-        .rel-card-desc {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            margin-top: 2px;
-        }
-        .rel-card-actions {
-            display: flex;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-        .rel-filters {
-            padding: 14px 20px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: flex-end;
-            border-bottom: 1px solid var(--color-border);
-            background: var(--color-bg);
-        }
-        .rel-filters .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .rel-filters label {
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--color-text-secondary);
-        }
-        .rel-filters input, .rel-filters select {
-            font-size: 13px;
-            padding: 5px 8px;
-            border: 1px solid var(--color-border);
-            border-radius: 6px;
-            background: var(--color-surface);
-            color: var(--color-text);
-        }
-        .rel-preview {
-            padding: 0 20px 16px;
-            overflow-x: auto;
-        }
-        .rel-preview table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-            margin-top: 12px;
-        }
-        .rel-preview th {
-            text-align: left;
-            padding: 7px 10px;
-            border-bottom: 2px solid var(--color-border);
-            color: var(--color-text-secondary);
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .rel-preview td {
-            padding: 7px 10px;
-            border-bottom: 1px solid var(--color-border);
-            color: var(--color-text);
-        }
-        .rel-preview tr:last-child td { border-bottom: none; }
-        .rel-total {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-            padding: 8px 20px 0;
-        }
-        .rel-empty {
-            text-align: center;
-            padding: 32px;
-            color: var(--color-text-secondary);
-            font-size: 13px;
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/relatorios.css">
 </head>
 <body>
     {% set active_page = 'relatorios' %}
@@ -115,268 +20,164 @@
             </div>
         </div>
 
-        <div style="padding:24px;">
-
-            <!-- Card: Egressos por período -->
-            <div class="rel-card">
-                <div class="rel-card-header">
-                    <div>
-                        <div class="rel-card-title">Egressos por período</div>
-                        <div class="rel-card-desc">Estágios concluídos (etapa 8) — para convidar a retornar</div>
-                    </div>
-                    <div class="rel-card-actions">
-                        <button class="btn btn-sm" onclick="visualizar('egressos')">Visualizar</button>
-                        <button class="btn btn-sm btn-primary" onclick="exportar('egressos')">Exportar CSV</button>
-                    </div>
+        <section class="reports-shell">
+            <div class="reports-hero">
+                <div>
+                    <h3>Visão gerencial</h3>
+                    <p>Indicadores do fluxo atual de Residentes &amp; Doutorandos.</p>
+                    <div class="reports-status" id="reports-status">Carregando indicadores…</div>
                 </div>
-                <div class="rel-filters">
-                    <div class="filter-group">
-                        <label>Término de</label>
-                        <input type="date" id="egressos-data-inicio">
-                    </div>
-                    <div class="filter-group">
-                        <label>Término até</label>
-                        <input type="date" id="egressos-data-fim">
-                    </div>
-                    <div class="filter-group">
-                        <label>Especialidade</label>
-                        <select id="egressos-especialidade" class="esp-select">
-                            <option value="">Todas</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Tipo</label>
-                        <select id="egressos-tipo" class="tipo-select">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="report-month" class="btn" aria-label="Filtrar por mês">
+                        <option value="">Todos os meses</option>
+                    </select>
+                    <button class="btn btn-primary" id="refresh-reports">Atualizar dados</button>
                 </div>
-                <div class="rel-total" id="total-egressos"></div>
-                <div class="rel-preview" id="preview-egressos"></div>
             </div>
 
-            <!-- Card: Pagamentos pendentes -->
-            <div class="rel-card">
-                <div class="rel-card-header">
-                    <div>
-                        <div class="rel-card-title">Pagamentos pendentes</div>
-                        <div class="rel-card-desc">Status Pendente ou Interessado com estágio em andamento — para cobrança ou confirmação</div>
-                    </div>
-                    <div class="rel-card-actions">
-                        <button class="btn btn-sm" onclick="visualizar('pendentes')">Visualizar</button>
-                        <button class="btn btn-sm btn-primary" onclick="exportar('pendentes')">Exportar CSV</button>
-                    </div>
-                </div>
-                <div class="rel-filters">
-                    <div class="filter-group">
-                        <label>Especialidade</label>
-                        <select id="pendentes-especialidade" class="esp-select">
-                            <option value="">Todas</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Tipo</label>
-                        <select id="pendentes-tipo" class="tipo-select">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Etapa</label>
-                        <select id="pendentes-etapa">
-                            <option value="">Todas</option>
-                            <option value="0">0 - Verificacao de vaga</option>
-                            <option value="1">1 - Venda realizada</option>
-                            <option value="2">2 - Pagamento confirmado</option>
-                            <option value="3">3 - Docs enviados</option>
-                            <option value="4">4 - Docs validados</option>
-                            <option value="5">5 - Vaga confirmada</option>
-                            <option value="6">6 - Orientacoes enviadas</option>
-                            <option value="7">7 - Comprovante recebido</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="rel-total" id="total-pendentes"></div>
-                <div class="rel-preview" id="preview-pendentes"></div>
+            <div class="reports-kpis">
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Cadastros</span>
+                    <strong class="report-kpi-value" id="kpi-total">—</strong>
+                    <span class="report-kpi-note">Total no período selecionado</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Novas inscrições</span>
+                    <strong class="report-kpi-value" id="kpi-novos">—</strong>
+                    <span class="report-kpi-note">Status Interessado</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Em andamento</span>
+                    <strong class="report-kpi-value" id="kpi-andamento">—</strong>
+                    <span class="report-kpi-note">Atendimento já iniciado</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Deferidos</span>
+                    <strong class="report-kpi-value" id="kpi-deferidos">—</strong>
+                    <span class="report-kpi-note">Vaga deferida</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Confirmados</span>
+                    <strong class="report-kpi-value" id="kpi-confirmados">—</strong>
+                    <span class="report-kpi-note">Prontos para etapa final</span>
+                </article>
+                <article class="report-kpi attention">
+                    <span class="report-kpi-label">Pagamentos pendentes</span>
+                    <strong class="report-kpi-value" id="kpi-pagamentos">—</strong>
+                    <span class="report-kpi-note">Cadastros ativos com pendência</span>
+                </article>
+                <article class="report-kpi attention">
+                    <span class="report-kpi-label">Valor pendente</span>
+                    <strong class="report-kpi-value" id="kpi-financeiro">—</strong>
+                    <span class="report-kpi-note">Saldo financeiro ainda não pago</span>
+                </article>
+                <article class="report-kpi critical">
+                    <span class="report-kpi-label">Críticos</span>
+                    <strong class="report-kpi-value" id="kpi-criticos">—</strong>
+                    <span class="report-kpi-note">Mais de 14 dias sem avanço</span>
+                </article>
+                <article class="report-kpi attention">
+                    <span class="report-kpi-label">Alertas</span>
+                    <strong class="report-kpi-value" id="kpi-alertas">—</strong>
+                    <span class="report-kpi-note">Entre 8 e 14 dias sem avanço</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Fila atual</span>
+                    <strong class="report-kpi-value" id="kpi-fila">—</strong>
+                    <span class="report-kpi-note">Ações pendentes no pipeline</span>
+                </article>
+                <article class="report-kpi critical">
+                    <span class="report-kpi-label">Pipeline crítico</span>
+                    <strong class="report-kpi-value" id="kpi-pipeline-criticos">—</strong>
+                    <span class="report-kpi-note">Ações pendentes há mais de 14 dias</span>
+                </article>
+                <article class="report-kpi">
+                    <span class="report-kpi-label">Confirmados atuais</span>
+                    <strong class="report-kpi-value" id="pending-confirmed">—</strong>
+                    <span class="report-kpi-note">Confirmações no banco atual</span>
+                </article>
             </div>
 
-            <!-- Card: Em andamento sem avanço -->
-            <div class="rel-card">
-                <div class="rel-card-header">
-                    <div>
-                        <div class="rel-card-title">Em andamento sem avanço</div>
-                        <div class="rel-card-desc">Estágios parados na mesma etapa há mais de N dias — para follow-up</div>
+            <div class="report-grid">
+                <section class="report-panel">
+                    <div class="report-panel-header">
+                        <h4>Distribuição por status</h4>
+                        <p>Como os cadastros estão distribuídos no fluxo atual.</p>
                     </div>
-                    <div class="rel-card-actions">
-                        <button class="btn btn-sm" onclick="visualizar('parados')">Visualizar</button>
-                        <button class="btn btn-sm btn-primary" onclick="exportar('parados')">Exportar CSV</button>
+                    <div class="report-panel-body" id="chart-status"></div>
+                </section>
+                <section class="report-panel">
+                    <div class="report-panel-header">
+                        <h4>Fila por etapa</h4>
+                        <p>Próxima ação operacional que está aguardando execução.</p>
                     </div>
-                </div>
-                <div class="rel-filters">
-                    <div class="filter-group">
-                        <label>Dias mínimos na etapa</label>
-                        <input type="number" id="parados-dias-min" value="7" min="1" style="width:80px;">
+                    <div class="report-panel-body" id="pipeline-etapas"></div>
+                </section>
+                <section class="report-panel">
+                    <div class="report-panel-header">
+                        <h4>Especialidades com maior volume</h4>
+                        <p>Concentração de solicitações cadastradas.</p>
                     </div>
-                    <div class="filter-group">
-                        <label>Especialidade</label>
-                        <select id="parados-especialidade" class="esp-select">
-                            <option value="">Todas</option>
-                        </select>
+                    <div class="report-panel-body" id="chart-especialidades"></div>
+                </section>
+                <section class="report-panel">
+                    <div class="report-panel-header">
+                        <h4>Evolução por mês</h4>
+                        <p>Quantidade de cadastros por mês/ano de estágio.</p>
                     </div>
-                    <div class="filter-group">
-                        <label>Tipo</label>
-                        <select id="parados-tipo" class="tipo-select">
-                            <option value="">Todos</option>
-                        </select>
+                    <div class="report-panel-body" id="chart-meses"></div>
+                </section>
+                <section class="report-panel">
+                    <div class="report-panel-header">
+                        <h4>Perfil dos cadastros</h4>
+                        <p>Distribuição entre Residentes e Doutorandos.</p>
                     </div>
-                </div>
-                <div class="rel-total" id="total-parados"></div>
-                <div class="rel-preview" id="preview-parados"></div>
+                    <div class="report-panel-body" id="chart-tipos"></div>
+                </section>
             </div>
 
-            <!-- Card: Lista por especialidade -->
-            <div class="rel-card">
-                <div class="rel-card-header">
-                    <div>
-                        <div class="rel-card-title">Lista por especialidade</div>
-                        <div class="rel-card-desc">Todos os contatos agrupados por especialidade — para campanhas segmentadas</div>
-                    </div>
-                    <div class="rel-card-actions">
-                        <button class="btn btn-sm" onclick="visualizar('especialidade')">Visualizar</button>
-                        <button class="btn btn-sm btn-primary" onclick="exportar('especialidade')">Exportar CSV</button>
-                    </div>
+            <section class="report-actions">
+                <h4>Ir para o trabalho operacional</h4>
+                <p>Os relatórios gerenciais usam dados agregados. Para atuar sobre pessoas específicas, abra a lista operacional já filtrada.</p>
+                <div class="report-action-grid">
+                    <a class="report-action" href="/residentes?status=Interessado">
+                        <strong>Novas inscrições</strong>
+                        <span>Revisar quem ainda está em Interessado.</span>
+                    </a>
+                    <a class="report-action" href="/residentes?status=Em%20andamento">
+                        <strong>Em andamento</strong>
+                        <span>Acompanhar processos que já começaram.</span>
+                    </a>
+                    <a class="report-action" href="/residentes?status=Deferido">
+                        <strong>Deferidos</strong>
+                        <span>Seguir para financeiro e documentação.</span>
+                    </a>
+                    <a class="report-action" href="/residentes?status=Confirmado">
+                        <strong>Confirmados</strong>
+                        <span>Preparar orientações e início do estágio.</span>
+                    </a>
+                    <a class="report-action" href="/residentes?pagamento=Pendente">
+                        <strong>Pagamentos pendentes</strong>
+                        <span>Localizar cadastros com cobrança em aberto.</span>
+                    </a>
+                    <a class="report-action" href="/residentes">
+                        <strong>Fila completa</strong>
+                        <span>Abrir prioridades e próxima ação de cada pessoa.</span>
+                    </a>
                 </div>
-                <div class="rel-filters">
-                    <div class="filter-group">
-                        <label>Especialidade</label>
-                        <select id="especialidade-especialidade" class="esp-select">
-                            <option value="">Todas</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Tipo</label>
-                        <select id="especialidade-tipo" class="tipo-select">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Mês/Ano</label>
-                        <select id="especialidade-mes" class="mes-select">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="rel-total" id="total-especialidade"></div>
-                <div class="rel-preview" id="preview-especialidade"></div>
-            </div>
+            </section>
 
-        </div>
+            <details class="report-legacy">
+                <summary>Sobre os relatórios históricos</summary>
+                <div class="report-legacy-content">
+                    <span>Os antigos relatórios baseados em <code>estagios</code> e na nomenclatura antiga de etapas foram retirados da navegação principal para não misturar regras antigas com o fluxo atual de Residentes &amp; Doutorandos.</span>
+                    <a class="btn btn-sm" href="/api/relatorios/exportar?relatorio=especialidade">Exportação histórica (legado)</a>
+                </div>
+            </details>
+        </section>
     </main>
 
     <script src="/static/js/app.js"></script>
-    <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-        loadTheme();
-        loadUserInfo();
-        await carregarFiltros();
-    });
-
-    async function carregarFiltros() {
-        const [espR, mesR, tipoR] = await Promise.all([
-            fetch('/api/especialidades'),
-            fetch('/api/meses'),
-            fetch('/api/tipos'),
-        ]);
-        const especialidades = await espR.json();
-        const meses = await mesR.json();
-        const tipos = await tipoR.json();
-
-        document.querySelectorAll('.esp-select').forEach(sel => {
-            especialidades.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.especialidade;
-                opt.textContent = e.especialidade;
-                sel.appendChild(opt);
-            });
-        });
-
-        document.querySelectorAll('.mes-select').forEach(sel => {
-            meses.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.mes_ano;
-                opt.textContent = m.mes_ano;
-                sel.appendChild(opt);
-            });
-        });
-
-        document.querySelectorAll('.tipo-select').forEach(sel => {
-            tipos.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.id;
-                opt.textContent = t.nome;
-                sel.appendChild(opt);
-            });
-        });
-    }
-
-    function coletarFiltros(tipo) {
-        const p = new URLSearchParams({ relatorio: tipo });
-        const g = (id) => {
-            const el = document.getElementById(id);
-            return el ? el.value : '';
-        };
-        if (tipo === 'egressos') {
-            if (g('egressos-data-inicio')) p.set('data_inicio', g('egressos-data-inicio'));
-            if (g('egressos-data-fim')) p.set('data_fim', g('egressos-data-fim'));
-            if (g('egressos-especialidade')) p.set('especialidade', g('egressos-especialidade'));
-            if (g('egressos-tipo')) p.set('tipo_id', g('egressos-tipo'));
-        } else if (tipo === 'pendentes') {
-            if (g('pendentes-especialidade')) p.set('especialidade', g('pendentes-especialidade'));
-            if (g('pendentes-tipo')) p.set('tipo_id', g('pendentes-tipo'));
-            if (g('pendentes-etapa') !== '') p.set('etapa', g('pendentes-etapa'));
-        } else if (tipo === 'parados') {
-            p.set('dias_min', g('parados-dias-min') || '7');
-            if (g('parados-especialidade')) p.set('especialidade', g('parados-especialidade'));
-            if (g('parados-tipo')) p.set('tipo_id', g('parados-tipo'));
-        } else {
-            if (g('especialidade-especialidade')) p.set('especialidade', g('especialidade-especialidade'));
-            if (g('especialidade-tipo')) p.set('tipo_id', g('especialidade-tipo'));
-            if (g('especialidade-mes')) p.set('mes_ano', g('especialidade-mes'));
-        }
-        return p;
-    }
-
-    async function visualizar(tipo) {
-        const params = coletarFiltros(tipo);
-        params.set('preview', '1');
-        const totalEl = document.getElementById('total-' + tipo);
-        const previewEl = document.getElementById('preview-' + tipo);
-        totalEl.textContent = 'Carregando...';
-        previewEl.innerHTML = '';
-        try {
-            const r = await fetch('/api/relatorios/exportar?' + params);
-            const d = await r.json();
-            if (!d.data || d.data.length === 0) {
-                totalEl.textContent = '';
-                previewEl.innerHTML = '<div class="rel-empty">Nenhum registro encontrado.</div>';
-                return;
-            }
-            const mostrando = d.data.length < d.total ? ` (mostrando ${d.data.length} de ${d.total})` : '';
-            totalEl.textContent = `${d.total} registro${d.total !== 1 ? 's' : ''}${mostrando}`;
-            const heads = d.headers.map(h => `<th>${h}</th>`).join('');
-            const rows = d.data.map(row =>
-                '<tr>' + d.headers.map(h => `<td>${row[h] || ''}</td>`).join('') + '</tr>'
-            ).join('');
-            previewEl.innerHTML = `<table><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>`;
-        } catch(e) {
-            totalEl.textContent = '';
-            previewEl.innerHTML = '<div class="rel-empty">Erro ao carregar dados.</div>';
-        }
-    }
-
-    function exportar(tipo) {
-        const params = coletarFiltros(tipo);
-        window.open('/api/relatorios/exportar?' + params);
-    }
-    </script>
+    <script src="/static/js/relatorios_dashboard.js"></script>
 </body>
 </html>
