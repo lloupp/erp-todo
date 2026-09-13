@@ -111,6 +111,50 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]['etapa'], 3)
 
+    def test_reports_page_and_aggregates_follow_current_residents(self):
+        self.login_admin()
+        before = self.client.get('/api/dashboard').get_json()
+        pipeline_before = self.client.get('/api/pipeline/dashboard').get_json()
+        stage1_before = int((pipeline_before.get('pendentes_por_etapa') or {}).get('1', 0))
+
+        created = self.client.post('/api/residentes', json={
+            'nome': 'Relatorio Integracao',
+            'especialidade': 'Cardiologia',
+            'mes_ano': '2026-12',
+            'tipo': 'Residente',
+            'modalidade': 'Optativo',
+            'status': 'Interessado',
+            'status_pagamento': 'Pendente',
+            'valor': 1250,
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        after = self.client.get('/api/dashboard').get_json()
+        self.assertEqual(after['total'], before['total'] + 1)
+        self.assertEqual(after['kpis']['novos'], before['kpis']['novos'] + 1)
+        self.assertAlmostEqual(
+            float(after['financeiro']['pendente']),
+            float(before['financeiro']['pendente']) + 1250,
+            places=2,
+        )
+
+        pipeline_after = self.client.get('/api/pipeline/dashboard').get_json()
+        self.assertEqual(
+            int((pipeline_after.get('pendentes_por_etapa') or {}).get('1', 0)),
+            stage1_before + 1,
+        )
+
+        page = self.client.get('/relatorios')
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('Visão gerencial', html)
+        self.assertIn('id="export-current-reports"', html)
+        self.assertIn('relatorios_dashboard.js', html)
+
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
     def test_non_admin_cannot_mutate_sensitive_configuration(self):
         self.login_admin()
         created = self.client.post('/api/usuarios', json={
