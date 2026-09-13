@@ -25,12 +25,13 @@
                 <div>
                     <h3>Visão gerencial</h3>
                     <p>Indicadores do fluxo atual de Residentes &amp; Doutorandos.</p>
-                    <div class="reports-status" id="reports-status">Carregando indicadores…</div>
+                    <div class="reports-status" id="reports-status" aria-live="polite">Carregando indicadores…</div>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <select id="report-month" class="btn" aria-label="Filtrar por mês">
                         <option value="">Todos os meses</option>
                     </select>
+                    <button class="btn" id="export-current-reports" disabled>Exportar CSV</button>
                     <button class="btn btn-primary" id="refresh-reports">Atualizar dados</button>
                 </div>
             </div>
