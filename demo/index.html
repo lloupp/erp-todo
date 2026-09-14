@@ -1,85 +1,180 @@
-<!doctype html>
-<html lang="pt-BR">
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Demo pública — Estágios Médicos</title>
-<style>
-:root{--bg:#f5f7fb;--surface:#fff;--text:#172033;--muted:#687386;--border:#e4e8ef;--primary:#3157d5;--primarySoft:#eef2ff;--danger:#c53d4a;--dangerSoft:#fff0f1;--warning:#a56700;--warningSoft:#fff6df;--success:#16805d;--successSoft:#eaf8f3;--shadow:0 10px 30px rgba(33,43,70,.08)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}.app{min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:230px;background:#182237;color:#fff;padding:20px 14px;z-index:20}.brand{font-weight:800;font-size:18px}.brand small{display:block;font-size:11px;font-weight:500;color:#aeb8ca;margin-top:2px}.demo-chip{margin:18px 0 16px;padding:10px 11px;border:1px solid rgba(255,255,255,.16);border-radius:9px;background:rgba(255,255,255,.06);font-size:11px;color:#dfe6f3}.nav{display:grid;gap:5px}.nav button{appearance:none;border:0;background:transparent;color:#cbd5e4;text-align:left;padding:10px 11px;border-radius:7px;cursor:pointer;font:inherit}.nav button:hover,.nav button.active{background:#273653;color:#fff}.sidebar-foot{position:absolute;left:14px;right:14px;bottom:18px;color:#9facbf;font-size:11px}.main{margin-left:230px;min-height:100vh}.topbar{height:64px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:10}.topbar h1{font-size:18px;margin:0}.badge-demo{background:#fff4d5;border:1px solid #efd897;color:#765300;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:700}.content{padding:24px;max-width:1500px;margin:0 auto}.view{display:none}.view.active{display:block}.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}.hero h2{margin:0 0 4px;font-size:21px}.hero p{margin:0;color:var(--muted);font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:7px;padding:8px 11px;font-weight:650;cursor:pointer}.btn:hover{background:#f8f9fc}.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.sm{padding:5px 8px;font-size:12px}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}.kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:15px;min-height:100px}.kpi.warn{border-color:#ebcf8e}.kpi.danger{border-color:#efb6bc}.kpi-label{text-transform:uppercase;font-size:10px;letter-spacing:.05em;color:var(--muted);font-weight:800}.kpi-value{font-size:27px;font-weight:800;margin-top:8px}.kpi-note{font-size:11px;color:var(--muted);margin-top:5px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}.panel-head{padding:14px 16px;border-bottom:1px solid var(--border)}.panel-head h3{font-size:14px;margin:0}.panel-head p{font-size:11px;color:var(--muted);margin:3px 0 0}.panel-body{padding:14px 16px}.bar-row{margin-bottom:11px}.bar-head{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px}.bar-head span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.track{height:7px;background:#edf0f5;border-radius:99px;overflow:hidden}.fill{height:100%;background:var(--primary);border-radius:99px}.filters{background:var(--surface);border:1px solid var(--border);padding:12px;border-radius:10px;display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.filters input,.filters select{border:1px solid var(--border);border-radius:7px;background:#fff;padding:8px 10px;color:var(--text);font:inherit}.filters input{min-width:250px;flex:1}.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:auto}.table{width:100%;border-collapse:collapse;min-width:850px}.table th{font-size:10px;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;background:#fafbfc;border-bottom:1px solid var(--border)}.table td{padding:10px 12px;border-bottom:1px solid #eef1f5}.table tr:last-child td{border-bottom:0}.person strong{display:block}.person small{color:var(--muted)}.status{display:inline-flex;border-radius:99px;padding:4px 8px;font-size:11px;font-weight:750;background:#eef1f6;color:#4b596d}.status.Interessado{background:#f1f3f7}.status.Em-andamento{background:var(--warningSoft);color:var(--warning)}.status.Deferido{background:#ebf3ff;color:#2863a6}.status.Confirmado,.status.Concluído{background:var(--successSoft);color:var(--success)}.status.Indeferido,.status.Desistente{background:var(--dangerSoft);color:var(--danger)}.priority{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}.priority:last-child{border-bottom:0}.priority small{display:block;color:var(--muted)}.count{background:var(--primarySoft);color:var(--primary);font-weight:800;border-radius:99px;padding:4px 8px;font-size:11px}.days{font-size:11px;color:var(--muted)}.days.late{color:var(--danger);font-weight:750}.notice{background:#eef6ff;border:1px solid #c9ddf8;border-radius:9px;padding:12px 14px;margin-bottom:16px;color:#33516f;font-size:12px}.modal-backdrop{position:fixed;inset:0;background:rgba(11,18,30,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}.modal-backdrop.open{display:flex}.modal{background:#fff;border-radius:12px;box-shadow:var(--shadow);max-width:620px;width:100%;max-height:90vh;overflow:auto}.modal-head{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px}.modal-body{padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{border:1px solid var(--border);border-radius:8px;padding:10px}.field span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:4px}.modal-foot{padding:14px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}.empty{color:var(--muted);padding:18px 0;font-size:12px}.mobile-menu{display:none}.footer-note{margin-top:18px;color:var(--muted);font-size:11px;text-align:center}.toast{position:fixed;right:20px;bottom:20px;background:#172033;color:#fff;padding:10px 13px;border-radius:8px;box-shadow:var(--shadow);font-size:12px;opacity:0;transform:translateY(8px);transition:.2s;z-index:90}.toast.show{opacity:1;transform:none}
-@media(max-width:900px){.sidebar{transform:translateX(-100%);transition:.2s}.sidebar.open{transform:none}.main{margin-left:0}.mobile-menu{display:inline-flex}.content{padding:14px 12px 24px}.topbar{padding:0 12px}.grid{grid-template-columns:1fr}.hero{align-items:flex-start;flex-direction:column}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.badge-demo{display:none}}
-@media(max-width:560px){.kpis{grid-template-columns:1fr}.modal-body{grid-template-columns:1fr}.filters>*{width:100%;min-width:0!important}.priority{grid-template-columns:minmax(0,1fr) auto}.priority .days{grid-column:1/-1}.topbar h1{font-size:16px}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Estágios Médicos — Demonstração</title>
+  <link rel="stylesheet" href="https://raw.githack.com/lloupp/erp-todo/4b7a82262a761ac99c12b72e74673dd8610d2f0d/static/css/style.css">
+  <link rel="stylesheet" href="https://raw.githack.com/lloupp/erp-todo/4b7a82262a761ac99c12b72e74673dd8610d2f0d/static/css/residentes_ux.css">
+  <link rel="stylesheet" href="https://raw.githack.com/lloupp/erp-todo/4b7a82262a761ac99c12b72e74673dd8610d2f0d/static/css/relatorios.css">
+  <link rel="stylesheet" href="demo.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
-<body>
-<div class="app">
-<aside class="sidebar" id="sidebar">
-  <div class="brand">Estágios<small>Santa Casa / UFCSPA · DEMO</small></div>
-  <div class="demo-chip"><strong>Demonstração pública</strong><br>Todos os dados são fictícios. Nenhuma alteração é persistida.</div>
-  <nav class="nav">
-    <button data-view="dashboard">Dashboard</button>
-    <button class="active" data-view="residentes">Residentes</button>
-    <button data-view="relatorios">Relatórios</button>
-  </nav>
-  <div class="sidebar-foot">Versão demonstrativa somente leitura · sem dados reais</div>
-</aside>
-<main class="main">
-  <header class="topbar"><div style="display:flex;align-items:center;gap:10px"><button class="btn mobile-menu" id="menu">☰</button><h1 id="page-title">Residentes</h1></div><span class="badge-demo">DEMO · DADOS FICTÍCIOS</span></header>
-  <div class="content">
-    <section class="view" id="view-dashboard">
-      <div class="hero"><div><h2>Dashboard</h2><p>Resumo demonstrativo do atendimento.</p></div></div>
-      <div class="notice">Esta versão usa uma massa fictícia embutida no navegador. Recarregar a página restaura o estado inicial.</div>
-      <div class="kpis" id="dashboard-kpis"></div>
-      <div class="grid"><section class="panel"><div class="panel-head"><h3>Status atuais</h3><p>Distribuição da base demonstrativa.</p></div><div class="panel-body" id="dash-status"></div></section><section class="panel"><div class="panel-head"><h3>Prioridades</h3><p>Próximas ações simuladas.</p></div><div class="panel-body" id="dash-priorities"></div></section></div>
+<body class="residents-ux">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>Estágios</h1>
+      <p class="subtitle">Santa Casa / UFCSPA</p>
+      <span class="demo-ribbon">DEMONSTRAÇÃO</span>
+    </div>
+    <div class="sidebar-body">
+      <div class="sidebar-nav">
+        <a href="#dashboard" class="nav-link" data-route="dashboard">Dashboard</a>
+        <a href="#residentes" class="nav-link active" data-route="residentes">Residentes</a>
+        <a href="#relatorios" class="nav-link" data-route="relatorios">Relatórios</a>
+        <a href="#usuarios" class="nav-link" data-route="usuarios">Usuários</a>
+        <a href="#configuracoes" class="nav-link" data-route="configuracoes">Configurações</a>
+      </div>
+      <div class="sidebar-user" id="sidebar-user">
+        <strong>Administrador Demo</strong>
+        <span>admin · demonstração</span>
+      </div>
+      <div style="margin-top:8px;">
+        <button class="btn btn-ghost" id="reset-demo-sidebar" style="width:100%;">Restaurar demo</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="topbar">
+      <button class="menu-toggle" id="menu-toggle">&#9776;</button>
+      <h2 id="page-title">Residentes &amp; Doutorandos</h2>
+      <div class="topbar-right" id="topbar-actions"></div>
+    </div>
+
+    <div class="demo-notice">
+      <strong>Ambiente de demonstração.</strong> Todos os nomes, e-mails, instituições e valores são fictícios. Alterações ficam somente neste navegador.
+    </div>
+
+    <section class="demo-view" id="view-dashboard" data-view="dashboard">
+      <div id="dashboard-container" class="dashboard-container"></div>
     </section>
 
-    <section class="view active" id="view-residentes">
-      <div class="hero"><div><h2>Residentes & Doutorandos</h2><p>Área operacional demonstrativa orientada à próxima ação.</p></div><div class="actions"><button class="btn" id="reset-demo">Restaurar demo</button><button class="btn primary" id="fake-new">+ Novo fictício</button></div></div>
-      <div class="notice"><strong>Dados 100% fictícios.</strong> E-mails usam <code>example.com</code>; não há CPF nem contatos reais.</div>
-      <section class="panel" style="margin-bottom:14px"><div class="panel-head"><h3>Prioridades de atendimento</h3><p>Fila ordenada por tempo sem avanço.</p></div><div class="panel-body" id="priority-list"></div></section>
-      <div class="filters"><input id="search" placeholder="Buscar por identificador, especialidade ou instituição"><select id="status-filter"><option value="">Todos os status</option></select><select id="payment-filter"><option value="">Todos os pagamentos</option><option>Pendente</option><option>Pago</option><option>Isento</option></select><button class="btn" id="clear-filters">Limpar</button></div>
-      <div class="table-wrap"><table class="table"><thead><tr><th>Pessoa fictícia</th><th>Tipo</th><th>Especialidade</th><th>Instituição</th><th>Mês/Ano</th><th>Status</th><th>Pagamento</th><th>Próxima ação</th></tr></thead><tbody id="residents-body"></tbody></table></div>
-      <div class="footer-note" id="resident-count"></div>
+    <section class="demo-view active" id="view-residentes" data-view="residentes">
+      <div id="welcome-banner" style="padding:0 24px;margin-bottom:4px;"></div>
+
+      <div id="pipeline-fila-panel" style="padding:0 24px;margin-bottom:12px;">
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:12px 16px;">
+          <div class="pipeline-head" id="pipeline-toggle">
+            <strong><span aria-hidden="true">&#128203;</span> Fila de Atendimento (Pipeline)</strong>
+            <span id="pipeline-fila-toggle">&#9650;</span>
+          </div>
+          <div id="pipeline-fila-lista" style="margin-top:10px;overflow-x:auto;"></div>
+        </div>
+      </div>
+
+      <div class="filters" id="resident-filters">
+        <input type="search" id="f-busca" placeholder="Buscar nome, email, CPF...">
+        <select id="f-tipo"><option value="">Todos os tipos</option><option>Residente</option><option>Doutorando</option></select>
+        <select id="f-modalidade"><option value="">Todas modalidades</option><option>Optativo</option><option>Convenio</option></select>
+        <select id="f-especialidade"><option value="">Todas especialidades</option></select>
+        <div class="filter-group"><label>Mês do estágio</label><input type="month" id="f-mes"></div>
+        <div class="filter-group"><label>Data inscrição</label><input type="month" id="f-mes-inscricao"></div>
+        <select id="f-status"><option value="">Todos os status</option><option>Interessado</option><option>Em andamento</option><option>Deferido</option><option>Confirmado</option><option>Trocado</option><option>Indeferido</option><option>Desistente</option><option>Cancelado</option><option>Nao veio</option></select>
+        <select id="f-pagamento"><option value="">Todos pagamentos</option><option>Pendente</option><option>Pago</option><option>Isento</option><option>Cancelado</option></select>
+        <select id="f-ordenar"><option value="recentes">Mais recentes</option><option value="nome">Nome (A-Z)</option><option value="mes_ano">Mês/Ano</option></select>
+        <button class="btn btn-sm btn-ghost" id="clear-filters">Limpar</button>
+      </div>
+
+      <div class="ux-worklist-heading">
+        <div><h3>Lista operacional</h3><div class="ux-worklist-meta" id="resident-count"></div></div>
+        <button class="btn btn-sm btn-ghost" id="toggle-details">Mostrar mais colunas</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead><tr><th>Nome</th><th>Tipo</th><th>Especialidade</th><th>Instituição</th><th>Data Inscricao</th><th>Mes Desejado</th><th>Periodo Desejado</th><th>Mês/Ano</th><th>Status</th><th>Pagamento</th><th style="width:190px;">Ações</th></tr></thead>
+          <tbody id="tabela-residentes"></tbody>
+        </table>
+        <div id="empty-state" class="empty-state" style="display:none;">Nenhum registro encontrado.</div>
+      </div>
+      <div class="pagination" id="paginacao"></div>
     </section>
 
-    <section class="view" id="view-relatorios">
-      <div class="hero"><div><h2>Visão gerencial</h2><p>Indicadores agregados da massa fictícia desta demonstração.</p><div style="font-size:11px;color:var(--muted);margin-top:4px" id="report-status">Pronto.</div></div><div class="actions"><select class="btn" id="month-filter"><option value="">Todos os meses</option></select><button class="btn" id="refresh">Atualizar</button><button class="btn primary" id="export">Exportar CSV</button></div></div>
-      <div class="kpis" id="report-kpis"></div>
-      <div class="grid"><section class="panel"><div class="panel-head"><h3>Distribuição por status</h3><p>Cadastros no fluxo atual.</p></div><div class="panel-body" id="report-status-bars"></div></section><section class="panel"><div class="panel-head"><h3>Fila por etapa</h3><p>Próxima ação pendente por etapa.</p></div><div class="panel-body" id="report-pipeline"></div></section><section class="panel"><div class="panel-head"><h3>Especialidades com maior volume</h3></div><div class="panel-body" id="report-specialties"></div></section><section class="panel"><div class="panel-head"><h3>Evolução por mês</h3></div><div class="panel-body" id="report-months"></div></section></div>
+    <section class="demo-view reports-shell" id="view-relatorios" data-view="relatorios">
+      <div class="reports-hero">
+        <div><h3>Visão gerencial</h3><p>Indicadores do fluxo atual de Residentes &amp; Doutorandos.</p><div class="reports-status" id="reports-status"></div></div>
+        <div class="actions-inline"><select id="report-month" class="btn"><option value="">Todos os meses</option></select><button class="btn btn-primary" id="export-report">Exportar CSV</button></div>
+      </div>
+      <div class="reports-kpis" id="reports-kpis"></div>
+      <div class="report-grid">
+        <section class="report-panel"><div class="report-panel-header"><h4>Distribuição por status</h4><p>Como os cadastros estão distribuídos.</p></div><div class="report-panel-body"><canvas id="report-status-chart"></canvas></div></section>
+        <section class="report-panel"><div class="report-panel-header"><h4>Fila por etapa</h4><p>Próxima ação aguardando execução.</p></div><div class="report-panel-body" id="report-pipeline"></div></section>
+        <section class="report-panel"><div class="report-panel-header"><h4>Especialidades com maior volume</h4><p>Concentração das solicitações.</p></div><div class="report-panel-body"><canvas id="report-specialty-chart"></canvas></div></section>
+        <section class="report-panel"><div class="report-panel-header"><h4>Evolução por mês</h4><p>Quantidade de estágios por mês/ano.</p></div><div class="report-panel-body"><canvas id="report-month-chart"></canvas></div></section>
+      </div>
+      <section class="report-actions"><h4>Ir para o trabalho operacional</h4><p>Clique para abrir a lista com o filtro correspondente.</p><div class="report-action-grid" id="report-shortcuts"></div></section>
     </section>
+
+    <section class="demo-view" id="view-usuarios" data-view="usuarios">
+      <div class="module-shell">
+        <div class="module-heading"><div><h3>Usuários</h3><p>Gerencie quem acessa o sistema. Nesta demo, as mudanças são locais.</p></div><button class="btn btn-primary" id="new-user">+ Novo usuário</button></div>
+        <div class="table-container compact-table"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Status</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody id="users-table"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="demo-view" id="view-configuracoes" data-view="configuracoes">
+      <div class="module-shell">
+        <div class="module-heading"><div><h3>Configurações</h3><p>Parâmetros demonstrativos do atendimento.</p></div><button class="btn btn-primary" id="save-config">Salvar alterações</button></div>
+        <div class="settings-grid">
+          <section class="settings-card"><h4>Limites por especialidade</h4><p>Exemplo de capacidade mensal.</p><div id="limits-list"></div></section>
+          <section class="settings-card"><h4>Mensagens modelo</h4><p>Textos utilizados nas etapas do pipeline.</p><label>Confirmação com aluno<textarea id="msg-confirmacao" rows="5"></textarea></label><label>Orientações para 1º dia<textarea id="msg-orientacoes" rows="5"></textarea></label></section>
+          <section class="settings-card"><h4>Área médica</h4><p>Especialidades disponíveis no cadastro.</p><div class="tag-list" id="specialty-tags"></div><div class="inline-form"><input id="new-specialty" placeholder="Nova especialidade"><button class="btn btn-sm" id="add-specialty">Adicionar</button></div></section>
+          <section class="settings-card"><h4>Ambiente Demo</h4><p>O banco real nunca é acessado nesta página.</p><button class="btn btn-secondary" id="reset-demo-settings">Restaurar dados fictícios</button></section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-overlay" id="resident-modal">
+    <div class="modal modal-wide">
+      <div class="modal-header"><h3 id="resident-modal-title">Novo Residente</h3><button class="btn-icon" data-close="resident-modal">&times;</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="form-id">
+        <details class="ux-form-section" open><summary>Aluno</summary><div class="ux-form-section-grid">
+          <div class="form-group"><label>Tipo *</label><select id="form-tipo"><option>Residente</option><option>Doutorando</option></select></div>
+          <div class="form-group"><label>Modalidade</label><select id="form-modalidade"><option>Optativo</option><option>Convenio</option></select></div>
+          <div class="form-group"><label>Nome *</label><input id="form-nome"></div>
+          <div class="form-group"><label>CPF</label><input id="form-cpf" placeholder="000.000.000-00"></div>
+          <div class="form-group"><label>E-mail</label><input id="form-email" type="email"></div>
+          <div class="form-group"><label>Telefone / WhatsApp</label><input id="form-telefone"></div>
+          <div class="form-group full"><label>Instituição de Origem</label><input id="form-instituicao"></div>
+        </div></details>
+        <details class="ux-form-section" open><summary>Estágio</summary><div class="ux-form-section-grid">
+          <div class="form-group"><label>Especialidade *</label><input id="form-especialidade" list="specialty-list"></div>
+          <div class="form-group"><label>Subespecialidade</label><input id="form-subesp"></div>
+          <div class="form-group"><label>Mês/Ano *</label><input id="form-mes-ano" type="month"></div>
+          <div class="form-group"><label>Status</label><select id="form-status"><option>Interessado</option><option>Em andamento</option><option>Deferido</option><option>Confirmado</option><option>Trocado</option><option>Indeferido</option><option>Desistente</option><option>Cancelado</option><option>Nao veio</option></select></div>
+          <div class="form-group"><label>Data início</label><input id="form-inicio" type="date"></div>
+          <div class="form-group"><label>Data término</label><input id="form-termino" type="date"></div>
+          <div class="form-group full"><label>Programa / Ano</label><input id="form-programa" placeholder="Ex: R2 Pediatria"></div>
+        </div></details>
+        <details class="ux-form-section"><summary>Financeiro</summary><div class="ux-form-section-grid">
+          <div class="form-group"><label>Valor (R$)</label><input id="form-valor" type="number" step="0.01"></div>
+          <div class="form-group"><label>Forma de pagamento</label><select id="form-forma-pag"><option>PIX</option><option>Boleto</option><option>Cartao</option><option>Transferencia</option><option>Isento</option></select></div>
+          <div class="form-group"><label>Status pagamento</label><select id="form-status-pag"><option>Pendente</option><option>Pago</option><option>Isento</option><option>Cancelado</option></select></div>
+          <div class="form-group"><label>Comprovante</label><input id="form-comprovante"></div>
+        </div></details>
+        <details class="ux-form-section"><summary>Observações</summary><div class="ux-form-section-grid"><div class="form-group full"><label>Observações</label><textarea id="form-observacoes" rows="4"></textarea></div></div></details>
+        <datalist id="specialty-list"></datalist>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" data-close="resident-modal">Cancelar</button><button class="btn btn-primary" id="save-resident">Salvar</button></div>
+    </div>
   </div>
-</main>
-</div>
-<div class="modal-backdrop" id="modal"><div class="modal"><div class="modal-head"><div><strong id="modal-title">Registro fictício</strong><div style="font-size:11px;color:var(--muted)">Demonstração — nenhuma alteração é persistida</div></div><button class="btn sm" id="modal-close">Fechar</button></div><div class="modal-body" id="modal-body"></div><div class="modal-foot"><button class="btn primary" id="simulate-advance">Simular avanço</button></div></div></div>
-<div class="toast" id="toast"></div>
-<script>
-'use strict';
-const SPECIALTIES=['Cardiologia','Cirurgia Geral','Clínica Médica','Anestesiologia','Gastroenterologia','Geriatria','Neurocirurgia','Terapia Intensiva'];
-const INSTITUTIONS=['Universidade Exemplo Sul','Faculdade Modelo de Medicina','Centro Universitário Demonstrativo','Instituto Acadêmico Fictício'];
-const STATUSES=['Interessado','Em andamento','Deferido','Confirmado','Concluído','Indeferido','Desistente'];
-const STAGES={1:'Triagem do cadastro',2:'Confirmação com o aluno',3:'Acionar chefe de serviço',4:'Deferimento da vaga',5:'Solicitar link ao Financeiro',6:'Enviar link e documentos',7:'Comprovante e documentos',8:'Orientações para o 1º dia'};
-function seedData(){const out=[];for(let i=1;i<=30;i++){const status=STATUSES[(i*3)%STATUSES.length];let stage={Interessado:1,'Em andamento':3,Deferido:5,Confirmado:8,Concluído:8,Indeferido:4,Desistente:2}[status];out.push({id:i,name:`Pessoa Demo ${String(i).padStart(2,'0')}`,email:`demo${String(i).padStart(2,'0')}@example.com`,type:i%4===0?'Doutorando':'Residente',modality:i%3===0?'Convênio':'Optativo',specialty:SPECIALTIES[(i*5)%SPECIALTIES.length],institution:INSTITUTIONS[(i*7)%INSTITUTIONS.length],month:`2026-${String(8+(i%5)).padStart(2,'0')}`,status,payment:i%6===0?'Isento':i%3===0?'Pago':'Pendente',value:i%6===0?0:650+(i%5)*175,stage,days:(i*4)%23});}return out}
-let residents=seedData();let selected=null;
-const $=id=>document.getElementById(id);const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});const num=n=>Number(n||0).toLocaleString('pt-BR');
-function toast(text){const el=$('toast');el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
-function setView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$('page-title').textContent={dashboard:'Dashboard',residentes:'Residentes',relatorios:'Relatórios'}[name];$('sidebar').classList.remove('open');if(name==='dashboard')renderDashboard();if(name==='residentes')renderResidents();if(name==='relatorios')renderReports()}
-function statusClass(s){return s.replace(/\s/g,'-')}
-function filteredResidents(){const q=$('search').value.toLowerCase().trim(),s=$('status-filter').value,p=$('payment-filter').value;return residents.filter(r=>(!q||[r.name,r.email,r.specialty,r.institution].join(' ').toLowerCase().includes(q))&&(!s||r.status===s)&&(!p||r.payment===p))}
-function priorityRows(data=filteredResidents()){return data.filter(r=>!['Concluído','Indeferido','Desistente'].includes(r.status)).sort((a,b)=>b.days-a.days)}
-function renderResidents(){const body=$('residents-body');const data=filteredResidents();body.replaceChildren();data.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td class="person"><strong>${r.name}</strong><small>${r.email}</small></td><td>${r.type}</td><td>${r.specialty}</td><td>${r.institution}</td><td>${r.month}</td><td><span class="status ${statusClass(r.status)}">${r.status}</span></td><td>${r.payment}</td><td><button class="btn sm" data-open="${r.id}">${STAGES[r.stage]||'Encerrado'}</button></td>`;body.appendChild(tr)});body.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>openModal(Number(b.dataset.open))));$('resident-count').textContent=`${data.length} de ${residents.length} registros fictícios exibidos`;renderPriorities()}
-function renderPriorities(){const root=$('priority-list');root.replaceChildren();const data=priorityRows().slice(0,9);if(!data.length){root.innerHTML='<div class="empty">Nenhuma prioridade com os filtros atuais.</div>';return}data.forEach(r=>{const row=document.createElement('div');row.className='priority';row.innerHTML=`<div><strong>${r.name}</strong><small>${r.specialty} · ${STAGES[r.stage]}</small></div><span class="count">Etapa ${r.stage}</span><span class="days ${r.days>14?'late':''}">${r.days} dias</span>`;root.appendChild(row)})}
-function bars(rootId,items,limit=10){const root=$(rootId);root.replaceChildren();const data=[...items].sort((a,b)=>b.value-a.value).slice(0,limit);const max=Math.max(1,...data.map(x=>x.value));data.forEach(x=>{const row=document.createElement('div');row.className='bar-row';row.innerHTML=`<div class="bar-head"><span>${x.label}</span><strong>${num(x.value)}</strong></div><div class="track"><div class="fill" style="width:${Math.max(3,x.value/max*100)}%"></div></div>`;root.appendChild(row)});if(!data.length)root.innerHTML='<div class="empty">Sem dados.</div>'}
-function group(data,key){const m=new Map();data.forEach(r=>m.set(r[key]||'Não informado',(m.get(r[key]||'Não informado')||0)+1));return [...m].map(([label,value])=>({label,value}))}
-function metrics(data){const active=data.filter(r=>!['Concluído','Indeferido','Desistente'].includes(r.status));return{total:data.length,new:data.filter(r=>r.status==='Interessado').length,ongoing:data.filter(r=>r.status==='Em andamento').length,approved:data.filter(r=>r.status==='Deferido').length,confirmed:data.filter(r=>r.status==='Confirmado').length,pending:data.filter(r=>r.payment==='Pendente'&&!['Indeferido','Desistente'].includes(r.status)).length,pendingValue:data.filter(r=>r.payment==='Pendente'&&!['Indeferido','Desistente'].includes(r.status)).reduce((s,r)=>s+r.value,0),critical:active.filter(r=>r.days>14).length,alerts:active.filter(r=>r.days>7&&r.days<=14).length,queue:active.length}}
-function kpiCard(label,value,note,cls=''){return `<article class="kpi ${cls}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-note">${note}</div></article>`}
-function renderDashboard(){const m=metrics(residents);$('dashboard-kpis').innerHTML=kpiCard('Cadastros',num(m.total),'Massa fictícia')+kpiCard('Fila atual',num(m.queue),'Processos ativos')+kpiCard('Pagamentos pendentes',num(m.pending),'Somente demonstração','warn')+kpiCard('Críticos',num(m.critical),'Mais de 14 dias','danger');bars('dash-status',group(residents,'status'));const root=$('dash-priorities');root.replaceChildren();priorityRows(residents).slice(0,6).forEach(r=>{const d=document.createElement('div');d.className='priority';d.innerHTML=`<div><strong>${r.name}</strong><small>${STAGES[r.stage]}</small></div><span class="count">${r.stage}</span><span class="days ${r.days>14?'late':''}">${r.days}d</span>`;root.appendChild(d)})}
-function renderReports(){const month=$('month-filter').value;const data=month?residents.filter(r=>r.month===month):residents;const m=metrics(data);$('report-kpis').innerHTML=kpiCard('Cadastros',num(m.total),'No filtro atual')+kpiCard('Novas inscrições',num(m.new),'Status Interessado')+kpiCard('Em andamento',num(m.ongoing),'Atendimento iniciado')+kpiCard('Deferidos',num(m.approved),'Vaga deferida')+kpiCard('Confirmados',num(m.confirmed),'Etapa final')+kpiCard('Pagamentos pendentes',num(m.pending),'Cadastros ativos','warn')+kpiCard('Valor pendente',money(m.pendingValue),'Valor fictício','warn')+kpiCard('Críticos',num(m.critical),'>14 dias','danger')+kpiCard('Alertas',num(m.alerts),'8–14 dias','warn')+kpiCard('Fila atual',num(m.queue),'Ações pendentes');bars('report-status-bars',group(data,'status'));bars('report-specialties',group(data,'specialty'));bars('report-months',group(residents,'month'));const pipe=$('report-pipeline');pipe.replaceChildren();const stageCounts=new Map();data.filter(r=>!['Concluído','Indeferido','Desistente'].includes(r.status)).forEach(r=>stageCounts.set(r.stage,(stageCounts.get(r.stage)||0)+1));[...stageCounts].sort((a,b)=>a[0]-b[0]).forEach(([stage,total])=>{const row=document.createElement('div');row.className='priority';row.innerHTML=`<div><strong>${stage} — ${STAGES[stage]}</strong><small>Próxima ação pendente</small></div><span class="count">${total}</span><span class="days">Abrir fila</span>`;pipe.appendChild(row)});$('report-status').textContent=`Atualizado agora${month?' · filtro '+month:''}`}
-function csvCell(v){let s=String(v??'');if(/^[=+\-@]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}
-function exportCsv(){const month=$('month-filter').value;const data=month?residents.filter(r=>r.month===month):residents;const m=metrics(data);const rows=[['DEMONSTRAÇÃO PÚBLICA — DADOS FICTÍCIOS'],['Filtro de mês',month||'Todos'],[],['Indicador','Valor'],['Cadastros',m.total],['Novas inscrições',m.new],['Em andamento',m.ongoing],['Deferidos',m.approved],['Confirmados',m.confirmed],['Pagamentos pendentes',m.pending],['Valor pendente (R$)',m.pendingValue.toFixed(2).replace('.',',')],['Críticos',m.critical],['Alertas',m.alerts],['Fila atual',m.queue],[],['Status','Quantidade'],...group(data,'status').map(x=>[x.label,x.value]),[],['Especialidade','Quantidade'],...group(data,'specialty').map(x=>[x.label,x.value]),[],['Mês/Ano','Quantidade'],...group(residents,'month').map(x=>[x.label,x.value])];const blob=new Blob(['\ufeff'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`demo_relatorio_gerencial${month?'_'+month:''}.csv`;document.body.appendChild(a);a.click();URL.revokeObjectURL(a.href);a.remove();toast('CSV fictício exportado')}
-function openModal(id){selected=residents.find(r=>r.id===id);if(!selected)return;$('modal-title').textContent=selected.name;$('modal-body').innerHTML=[['Tipo',selected.type],['Modalidade',selected.modality],['Especialidade',selected.specialty],['Instituição',selected.institution],['Mês/Ano',selected.month],['Status',selected.status],['Pagamento',selected.payment],['Próxima ação',STAGES[selected.stage]]].map(([k,v])=>`<div class="field"><span>${k}</span><strong>${v}</strong></div>`).join('');$('modal').classList.add('open')}
-function advanceSelected(){if(!selected)return;const transitions={'Interessado':'Em andamento','Em andamento':'Deferido','Deferido':'Confirmado','Confirmado':'Concluído'};if(!transitions[selected.status]){toast('Fluxo encerrado neste exemplo');return}selected.status=transitions[selected.status];selected.stage=Math.min(8,selected.stage+2);selected.days=0;$('modal').classList.remove('open');renderResidents();toast('Avanço simulado; recarregue para restaurar')}
-function initFilters(){STATUSES.forEach(s=>{const o=document.createElement('option');o.textContent=s;o.value=s;$('status-filter').appendChild(o)});[...new Set(residents.map(r=>r.month))].sort().forEach(m=>{const o=document.createElement('option');o.textContent=m;o.value=m;$('month-filter').appendChild(o)})}
-document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));$('menu').addEventListener('click',()=>$('sidebar').classList.toggle('open'));$('search').addEventListener('input',renderResidents);$('status-filter').addEventListener('change',renderResidents);$('payment-filter').addEventListener('change',renderResidents);$('clear-filters').addEventListener('click',()=>{$('search').value='';$('status-filter').value='';$('payment-filter').value='';renderResidents()});$('reset-demo').addEventListener('click',()=>{residents=seedData();renderResidents();toast('Dados fictícios restaurados')});$('fake-new').addEventListener('click',()=>toast('Cadastro desativado na demo pública'));$('modal-close').addEventListener('click',()=>$('modal').classList.remove('open'));$('modal').addEventListener('click',e=>{if(e.target===$('modal'))$('modal').classList.remove('open')});$('simulate-advance').addEventListener('click',advanceSelected);$('month-filter').addEventListener('change',renderReports);$('refresh').addEventListener('click',()=>{renderReports();toast('Indicadores atualizados')});$('export').addEventListener('click',exportCsv);initFilters();renderResidents();renderDashboard();
-</script>
+
+  <div class="modal-overlay" id="pipeline-modal"><div class="modal"><div class="modal-header"><h3 id="pipeline-modal-title">Pipeline</h3><button class="btn-icon" data-close="pipeline-modal">&times;</button></div><div class="modal-body" id="pipeline-modal-body"></div><div class="modal-footer" id="pipeline-modal-footer"></div></div></div>
+
+  <div class="modal-overlay" id="import-modal"><div class="modal"><div class="modal-header"><h3>Importar Excel — Demo</h3><button class="btn-icon" data-close="import-modal">&times;</button></div><div class="modal-body"><div class="notice-box"><strong>Simulação segura:</strong> nenhum arquivo é enviado. O botão abaixo adiciona três registros fictícios para demonstrar o fluxo de importação.</div><div class="table-container compact-table"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Especialidade</th></tr></thead><tbody><tr><td>Importado Demo 01</td><td>Residente</td><td>Cardiologia</td></tr><tr><td>Importado Demo 02</td><td>Doutorando</td><td>Pediatria</td></tr><tr><td>Importado Demo 03</td><td>Residente</td><td>Neurologia</td></tr></tbody></table></div></div><div class="modal-footer"><button class="btn btn-ghost" data-close="import-modal">Cancelar</button><button class="btn btn-primary" id="confirm-import">Confirmar importação fictícia</button></div></div></div>
+
+  <div class="modal-overlay" id="message-modal"><div class="modal"><div class="modal-header"><h3 id="message-title">Mensagem</h3><button class="btn-icon" data-close="message-modal">&times;</button></div><div class="modal-body"><div class="form-group"><label>Canal</label><select id="message-channel"><option>WhatsApp</option><option>E-mail</option></select></div><div class="form-group"><label>Mensagem</label><textarea id="message-text" rows="9"></textarea></div></div><div class="modal-footer"><button class="btn btn-ghost" data-close="message-modal">Cancelar</button><button class="btn btn-primary" id="send-message">Simular envio</button></div></div></div>
+
+  <div class="modal-overlay" id="user-modal"><div class="modal"><div class="modal-header"><h3>Novo usuário</h3><button class="btn-icon" data-close="user-modal">&times;</button></div><div class="modal-body"><div class="form-group"><label>Nome</label><input id="user-name"></div><div class="form-group"><label>Usuário</label><input id="user-login"></div><div class="form-group"><label>Perfil</label><select id="user-role"><option value="user">Usuário</option><option value="admin">Administrador</option></select></div></div><div class="modal-footer"><button class="btn btn-ghost" data-close="user-modal">Cancelar</button><button class="btn btn-primary" id="save-user">Adicionar</button></div></div></div>
+
+  <button class="ai-demo-button" id="ai-button" title="Assistente IA demonstrativo">✦</button>
+  <div class="ai-demo-panel" id="ai-panel"><div class="ai-demo-head"><strong>Assistente IA · Demo</strong><button class="btn-icon" id="ai-close">×</button></div><div class="ai-demo-body" id="ai-body"><p>Posso resumir a fila demonstrativa ou destacar gargalos.</p><button class="btn btn-sm ai-quick" data-ai="fila">Resumir fila</button><button class="btn btn-sm ai-quick" data-ai="financeiro">Pendências financeiras</button><button class="btn btn-sm ai-quick" data-ai="criticos">Casos críticos</button><div id="ai-answer" class="ai-answer"></div></div></div>
+  <div class="toast-demo" id="toast"></div>
+
+  <script src="demo.js"></script>
 </body>
 </html>
