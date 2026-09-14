@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Verify published files and JavaScript
         env:
-          BASE: https://rawcdn.githack.com/lloupp/erp-todo/c14988f33de76843913d3a39b97e471ebe5bd46b/demo
+          BASE: https://rawcdn.githack.com/lloupp/erp-todo/55a380c105b4cc333110bc252e73da71e62e0c0c/demo
         run: |
           set -euo pipefail
           curl -fLsS --retry 6 --retry-delay 4 --retry-all-errors "$BASE/index.html" -o /tmp/index.html
@@ -38,7 +38,7 @@ jobs:
 
       - name: Exercise real public demo
         env:
-          DEMO_URL: https://rawcdn.githack.com/lloupp/erp-todo/c14988f33de76843913d3a39b97e471ebe5bd46b/demo/index.html
+          DEMO_URL: https://rawcdn.githack.com/lloupp/erp-todo/55a380c105b4cc333110bc252e73da71e62e0c0c/demo/index.html
         run: |
           cat > /tmp/verify-demo.cjs <<'JS'
           const { chromium } = require('playwright');
@@ -90,6 +90,7 @@ jobs:
             await page.click('#ai-button');
             await page.click('[data-ai="fila"]');
             if (!(await page.textContent('#ai-answer')).includes('fila demonstrativa')) throw new Error('AI demo summary failed');
+            await page.click('#ai-close');
 
             await page.setViewportSize({width:390,height:844});
             await page.reload({waitUntil:'networkidle'});
