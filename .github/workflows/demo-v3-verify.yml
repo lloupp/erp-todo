@@ -1,0 +1,104 @@
+name: verify-expanded-public-demo
+
+on:
+  push:
+    branches: ["demo-public"]
+    paths:
+      - "demo/**"
+      - ".github/workflows/demo-v3-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Verify published files and JavaScript
+        env:
+          BASE: https://rawcdn.githack.com/lloupp/erp-todo/c14988f33de76843913d3a39b97e471ebe5bd46b/demo
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 6 --retry-delay 4 --retry-all-errors "$BASE/index.html" -o /tmp/index.html
+          curl -fLsS --retry 6 --retry-delay 4 --retry-all-errors "$BASE/demo.css" -o /tmp/demo.css
+          curl -fLsS --retry 6 --retry-delay 4 --retry-all-errors "$BASE/demo.js" -o /tmp/demo.js
+          grep -q 'Ambiente de demonstração' /tmp/index.html
+          grep -q 'Residentes &amp; Doutorandos' /tmp/index.html
+          grep -q 'Assistente IA' /tmp/index.html
+          grep -q 'example.com' /tmp/demo.js
+          node --check /tmp/demo.js
+
+      - name: Install browser
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright@1.55.0
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Exercise real public demo
+        env:
+          DEMO_URL: https://rawcdn.githack.com/lloupp/erp-todo/c14988f33de76843913d3a39b97e471ebe5bd46b/demo/index.html
+        run: |
+          cat > /tmp/verify-demo.cjs <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            const context = await browser.newContext({viewport:{width:1440,height:900}});
+            await context.addCookies([{name:'__Http-phish',value:'1',domain:'rawcdn.githack.com',path:'/',secure:true,httpOnly:true}]);
+            const page = await context.newPage();
+            const errors=[];
+            page.on('pageerror', e => errors.push(String(e)));
+            await page.goto(process.env.DEMO_URL, {waitUntil:'networkidle', timeout:90000});
+            await page.waitForSelector('#tabela-residentes tr');
+            if (!(await page.textContent('body')).includes('Administrador Demo')) throw new Error('demo shell missing');
+            const countText = await page.textContent('#resident-count');
+            if (!countText.includes('36')) throw new Error('seed count mismatch: '+countText);
+
+            await page.click('[data-route="dashboard"]');
+            await page.waitForSelector('#dash-status');
+            if ((await page.locator('.kpi-card').count()) < 8) throw new Error('dashboard KPIs missing');
+
+            await page.click('[data-route="relatorios"]');
+            await page.waitForSelector('#reports-kpis .report-kpi');
+            if ((await page.locator('#reports-kpis .report-kpi').count()) < 8) throw new Error('report KPIs missing');
+
+            await page.click('[data-route="usuarios"]');
+            await page.waitForSelector('#users-table tr');
+            if ((await page.locator('#users-table tr').count()) < 3) throw new Error('users demo missing');
+
+            await page.click('[data-route="configuracoes"]');
+            await page.waitForSelector('#limits-list .limit-row');
+
+            await page.click('[data-route="residentes"]');
+            await page.click('#new-resident');
+            await page.fill('#form-nome','Teste Navegador Demo');
+            await page.fill('#form-especialidade','Cardiologia');
+            await page.click('#save-resident');
+            await page.waitForTimeout(150);
+            await page.fill('#f-busca','Teste Navegador Demo');
+            await page.waitForTimeout(100);
+            if (!(await page.textContent('#tabela-residentes')).includes('Teste Navegador Demo')) throw new Error('resident create flow failed');
+            await page.fill('#f-busca','');
+
+            const pipelineBtn = page.locator('[data-pipeline]').first();
+            await pipelineBtn.click();
+            await page.waitForSelector('#pipeline-modal.active');
+            await page.click('#pipeline-advance');
+            await page.waitForTimeout(100);
+
+            await page.click('#ai-button');
+            await page.click('[data-ai="fila"]');
+            if (!(await page.textContent('#ai-answer')).includes('fila demonstrativa')) throw new Error('AI demo summary failed');
+
+            await page.setViewportSize({width:390,height:844});
+            await page.reload({waitUntil:'networkidle'});
+            await page.waitForSelector('#tabela-residentes tr');
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 4);
+            if (overflow) throw new Error('mobile horizontal viewport overflow');
+            if (errors.length) throw new Error('page errors: '+errors.join(' | '));
+            await browser.close();
+            console.log('Expanded public demo verified successfully');
+          })().catch(err => { console.error(err); process.exit(1); });
+          JS
+          NODE_PATH="$PWD/node_modules" node /tmp/verify-demo.cjs
