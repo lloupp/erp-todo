@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Verify published files and JavaScript
         env:
-          BASE: https://rawcdn.githack.com/lloupp/erp-todo/55a380c105b4cc333110bc252e73da71e62e0c0c/demo
+          BASE: https://rawcdn.githack.com/lloupp/erp-todo/fcb1814e27d991b91c50c9a3f45139d3f78521ca/demo
         run: |
           set -euo pipefail
           curl -fLsS --retry 6 --retry-delay 4 --retry-all-errors "$BASE/index.html" -o /tmp/index.html
@@ -38,7 +38,7 @@ jobs:
 
       - name: Exercise real public demo
         env:
-          DEMO_URL: https://rawcdn.githack.com/lloupp/erp-todo/55a380c105b4cc333110bc252e73da71e62e0c0c/demo/index.html
+          DEMO_URL: https://rawcdn.githack.com/lloupp/erp-todo/fcb1814e27d991b91c50c9a3f45139d3f78521ca/demo/index.html
         run: |
           cat > /tmp/verify-demo.cjs <<'JS'
           const { chromium } = require('playwright');
@@ -72,6 +72,7 @@ jobs:
 
             await page.click('[data-route="residentes"]');
             await page.click('#new-resident');
+            await page.waitForSelector('#resident-modal.active #form-nome', {state:'visible'});
             await page.fill('#form-nome','Teste Navegador Demo');
             await page.fill('#form-especialidade','Cardiologia');
             await page.click('#save-resident');
@@ -83,7 +84,7 @@ jobs:
 
             const pipelineBtn = page.locator('[data-pipeline]').first();
             await pipelineBtn.click();
-            await page.waitForSelector('#pipeline-modal.active');
+            await page.waitForSelector('#pipeline-modal.active', {state:'visible'});
             await page.click('#pipeline-advance');
             await page.waitForTimeout(100);
 
