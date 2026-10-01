@@ -182,7 +182,7 @@ const PIPELINE_ETAPAS_INFO = {
 const INPUT_STYLE = 'width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;';
 const TEXTAREA_STYLE = 'width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;';
 
-let pipelineAcaoAtual = null; // { residenteId, etapa, telefone }
+let pipelineAcaoAtual = null; // { residente, etapa, telefoneDestino, emailDestino }
 
 function togglePipelineFila() {
     const lista = document.getElementById('pipeline-fila-lista');
@@ -242,7 +242,7 @@ async function carregarPipelineFila() {
 async function abrirModalPipelineAcao(a) {
     const info = PIPELINE_ETAPAS_INFO[a.etapa];
     if (!info) return;
-    pipelineAcaoAtual = { residente: a, etapa: a.etapa, telefoneDestino: a.telefone };
+    pipelineAcaoAtual = { residente: a, etapa: a.etapa, telefoneDestino: a.telefone, emailDestino: a.email || null };
 
     document.getElementById('pa-titulo').textContent = `Etapa ${a.etapa} — ${info.titulo}`;
     document.getElementById('pa-residente-nome').textContent = `${a.nome} (${a.tipo})`;
@@ -255,8 +255,14 @@ async function abrirModalPipelineAcao(a) {
     const mensagemLabel = document.getElementById('pa-mensagem-label');
     const mensagemTxt = document.getElementById('pa-mensagem');
     const btnWpp = document.getElementById('pa-btn-whatsapp');
+    const btnOutlook = document.getElementById('pa-btn-outlook');
+    const assuntoLabel = document.getElementById('pa-email-assunto-label');
+    const assuntoInput = document.getElementById('pa-email-assunto');
+    let assuntoPadrao = '';
 
     if (info.tipoMensagem === 'aluno') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Confirmação do estágio — ${a.especialidade || a.nome}`;
         const primeiroNome = (a.nome || '').trim().split(' ')[0];
         const template = MENSAGENS_MODELO.whatsapp_aluno || TEMPLATE_ALUNO_FALLBACK;
         mensagemTxt.value = preencherTemplate(template, { nome: primeiroNome, usuario: USUARIO_LOGADO_NOME });
@@ -273,6 +279,7 @@ async function abrirModalPipelineAcao(a) {
                     ${AREA_MEDICA.map((c, idx) => `<option value="${idx}">${esc(c.especialidade)} — ${esc(c.nome)}</option>`).join('')}
                 </select>
             </label>`;
+        assuntoPadrao = `Solicitação de vaga — ${a.nome} — ${a.especialidade || 'Estágio'}`;
         const melhorIdx = melhorMatchAreaMedica(a.especialidade);
         const selectAm = document.getElementById('pa-campo-contato-am');
         if (melhorIdx !== null && selectAm) selectAm.value = melhorIdx;
@@ -283,6 +290,8 @@ async function abrirModalPipelineAcao(a) {
         await carregarAreaMedica();
         const contatoFin = (AREA_MEDICA || []).find(c => normalizarTexto(c.especialidade) === 'financeiro');
         pipelineAcaoAtual.telefoneDestino = contatoFin ? contatoFin.celular : null;
+        pipelineAcaoAtual.emailDestino = contatoFin ? contatoFin.email : null;
+        assuntoPadrao = `Solicitação de link de pagamento — ${a.nome}`;
         if (!contatoFin) {
             showToast('Contato "Financeiro" não cadastrado em Configurações > Área Médica.', 'error');
         }
@@ -296,6 +305,8 @@ async function abrirModalPipelineAcao(a) {
         mensagemLabel.style.display = 'block';
         btnWpp.style.display = 'inline-block';
     } else if (info.tipoMensagem === 'link_docs') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Pagamento e documentação do estágio — ${a.nome}`;
         extra.innerHTML = `
             <label>Link de pagamento
                 <input type="text" id="pa-campo-link" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
@@ -307,6 +318,8 @@ async function abrirModalPipelineAcao(a) {
         btnWpp.style.display = 'inline-block';
         recalcularMensagemPipeline();
     } else if (info.tipoMensagem === 'orientacoes') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Orientações para o primeiro dia — ${a.nome}`;
         extra.innerHTML = `
             <label>Local
                 <input type="text" id="pa-campo-local" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
@@ -320,8 +333,16 @@ async function abrirModalPipelineAcao(a) {
     } else {
         mensagemLabel.style.display = 'none';
         btnWpp.style.display = 'none';
+        btnOutlook.style.display = 'none';
+        assuntoLabel.style.display = 'none';
     }
-    atualizarLinkPipelineAcao();
+
+    if (mensagemLabel.style.display !== 'none') {
+        assuntoInput.value = assuntoPadrao;
+        assuntoLabel.style.display = 'block';
+        btnOutlook.style.display = 'inline-block';
+    }
+    atualizarCanaisPipelineAcao();
 
     const botoes = document.getElementById('pa-botoes');
     botoes.innerHTML = '<button class="btn btn-ghost" onclick="fecharModal(\'modal-pipeline-acao\')">Cancelar</button>' +
@@ -340,6 +361,7 @@ function recalcularMensagemPipeline() {
         const selectAm = document.getElementById('pa-campo-contato-am');
         const contato = selectAm ? AREA_MEDICA[parseInt(selectAm.value, 10)] : null;
         pipelineAcaoAtual.telefoneDestino = contato ? contato.celular : null;
+        pipelineAcaoAtual.emailDestino = contato ? contato.email : null;
         document.getElementById('pa-mensagem').value = contato ? montarMensagemAreaMedica(a, contato) : '';
     } else if (info.tipoMensagem === 'link_docs') {
         const link = (document.getElementById('pa-campo-link').value || '').trim() || '(link pendente)';
@@ -359,20 +381,72 @@ function recalcularMensagemPipeline() {
             usuario: USUARIO_LOGADO_NOME,
         });
     }
-    atualizarLinkPipelineAcao();
+    atualizarCanaisPipelineAcao();
 }
 
-function atualizarLinkPipelineAcao() {
-    const btn = document.getElementById('pa-btn-whatsapp');
-    if (!pipelineAcaoAtual || btn.style.display === 'none') return;
+function atualizarCanaisPipelineAcao() {
+    if (!pipelineAcaoAtual) return;
+    const btnWpp = document.getElementById('pa-btn-whatsapp');
+    const btnOutlook = document.getElementById('pa-btn-outlook');
     const mensagem = document.getElementById('pa-mensagem').value;
-    const link = whatsappLinkDireto(pipelineAcaoAtual.telefoneDestino, mensagem);
-    if (link) {
-        btn.href = link;
-        btn.classList.remove('btn-disabled');
-    } else {
-        btn.href = 'javascript:void(0)';
-        btn.classList.add('btn-disabled');
+
+    if (btnWpp && btnWpp.style.display !== 'none') {
+        const link = whatsappLinkDireto(pipelineAcaoAtual.telefoneDestino, mensagem);
+        if (link) {
+            btnWpp.href = link;
+            btnWpp.classList.remove('btn-disabled');
+        } else {
+            btnWpp.href = 'javascript:void(0)';
+            btnWpp.classList.add('btn-disabled');
+        }
+    }
+
+    if (btnOutlook && btnOutlook.style.display !== 'none') {
+        const podeEnviar = Boolean(pipelineAcaoAtual.emailDestino && mensagem.trim());
+        btnOutlook.disabled = !podeEnviar;
+        btnOutlook.title = podeEnviar
+            ? `Enviar para ${pipelineAcaoAtual.emailDestino}`
+            : 'E-mail do destinatário não cadastrado';
+    }
+}
+
+// Compatibilidade com chamadas existentes em trechos antigos do modulo.
+function atualizarLinkPipelineAcao() {
+    atualizarCanaisPipelineAcao();
+}
+
+async function enviarOutlookPipeline() {
+    if (!pipelineAcaoAtual) return;
+    const destinatario = pipelineAcaoAtual.emailDestino;
+    const assunto = (document.getElementById('pa-email-assunto').value || '').trim();
+    const mensagem = (document.getElementById('pa-mensagem').value || '').trim();
+    if (!destinatario) {
+        showToast('E-mail do destinatário não cadastrado.', 'error');
+        return;
+    }
+    if (!assunto || !mensagem) {
+        showToast('Informe assunto e mensagem antes de enviar.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('pa-btn-outlook');
+    btn.disabled = true;
+    try {
+        await apiFetch('/api/integracoes/outlook/enviar', {
+            method: 'POST',
+            body: JSON.stringify({
+                residente_id: pipelineAcaoAtual.residente.residente_id,
+                etapa: pipelineAcaoAtual.etapa,
+                destinatario,
+                assunto,
+                mensagem,
+            }),
+        });
+        showToast(`E-mail enviado pelo Outlook para ${destinatario}.`, 'success');
+    } catch (_) {
+        // apiFetch já apresenta o erro.
+    } finally {
+        atualizarCanaisPipelineAcao();
     }
 }
 
