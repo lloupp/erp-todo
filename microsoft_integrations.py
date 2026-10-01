@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import os
+import sqlite3
 from datetime import datetime
 from urllib import error, parse, request as urlrequest
 
@@ -308,10 +309,24 @@ def register_microsoft_integrations(app, get_db, criar_acao_pipeline):
                 status="success",
                 residente_id=rid,
                 external_id=external_id,
-                payload=data,
+                payload={
+                    "form_id": form_id,
+                    "response_id": response_id,
+                    "fields_received": sorted(data.keys()),
+                },
                 actor="Microsoft Forms",
             )
             db.commit()
+        except sqlite3.IntegrityError:
+            db.rollback()
+            existing = db.execute(
+                """SELECT id FROM residentes
+                   WHERE origem='microsoft_forms' AND origem_ref=?""",
+                (external_id,),
+            ).fetchone()
+            if existing:
+                return jsonify({"ok": True, "duplicado": True, "id": existing["id"]}), 200
+            raise
         except Exception as exc:
             db.rollback()
             app.logger.exception("Falha ao importar resposta do Microsoft Forms")
