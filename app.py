@@ -44,7 +44,10 @@ verify_password = verify_password
 app = _legacy.app
 
 from sge_academico import register_sge_academico
+from microsoft_integrations import register_microsoft_integrations
+
 register_sge_academico(app, _legacy.get_db)
+register_microsoft_integrations(app, _legacy.get_db, _legacy.criar_acao_pipeline)
 
 # Tests and alternate deployments can point the application at another SQLite
 # file without mutating the repository working tree.

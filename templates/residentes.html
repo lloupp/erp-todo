@@ -343,9 +343,15 @@
                 </div>
                 <div id="pa-extra-campos" style="display:flex;flex-direction:column;gap:10px;"></div>
                 <label id="pa-mensagem-label" style="display:none;">Mensagem (editável)
-                    <textarea id="pa-mensagem" rows="5" oninput="atualizarLinkPipelineAcao()" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>
+                    <textarea id="pa-mensagem" rows="5" oninput="atualizarCanaisPipelineAcao()" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>
                 </label>
-                <a class="btn btn-secondary btn-whatsapp" id="pa-btn-whatsapp" href="javascript:void(0)" target="_blank" rel="noopener" style="display:none;text-align:center;">Abrir WhatsApp</a>
+                <label id="pa-email-assunto-label" style="display:none;">Assunto do e-mail
+                    <input id="pa-email-assunto" type="text" style="width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;">
+                </label>
+                <div id="pa-canais-envio" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <a class="btn btn-secondary btn-whatsapp" id="pa-btn-whatsapp" href="javascript:void(0)" target="_blank" rel="noopener" style="display:none;text-align:center;">Abrir WhatsApp</a>
+                    <button class="btn btn-secondary" id="pa-btn-outlook" type="button" onclick="enviarOutlookPipeline()" style="display:none;">Enviar por Outlook</button>
+                </div>
                 <label>Observação (opcional)
                     <textarea id="pa-observacao" rows="2" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>
                 </label>
