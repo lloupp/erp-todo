@@ -256,6 +256,23 @@ def ensure_database(
                 ON pipeline_acoes(residente_id);
             CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_situacao
                 ON pipeline_acoes(situacao, etapa);
+
+            CREATE TABLE IF NOT EXISTS residente_documentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                residente_id INTEGER NOT NULL REFERENCES residentes(id) ON DELETE CASCADE,
+                nome TEXT NOT NULL,
+                obrigatorio INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'Pendente',
+                observacao TEXT,
+                atualizado_por TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_residente_documentos_nome
+                ON residente_documentos(residente_id, nome COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_residente_documentos_status
+                ON residente_documentos(residente_id, obrigatorio, status);
         ''')
 
         _add_missing_columns(db, 'estagios', [
@@ -271,6 +288,10 @@ def ensure_database(
             ('forma_pagamento', 'TEXT'), ('status_pagamento', "TEXT DEFAULT 'Pendente'"),
             ('comprovante_pagamento', 'TEXT'), ('data_inscricao', 'TEXT'),
             ('periodo_desejado', 'TEXT'), ('mes_desejado', 'TEXT'),
+            ('carga_horaria_prevista', 'REAL'),
+            ('carga_horaria_realizada', 'REAL'),
+            ('certificado_emitido_em', 'DATETIME'),
+            ('certificado_enviado_em', 'DATETIME'),
         ])
 
         db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
