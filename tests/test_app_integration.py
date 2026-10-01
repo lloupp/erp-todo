@@ -3,6 +3,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 class AppIntegrationTests(unittest.TestCase):
@@ -15,6 +16,13 @@ class AppIntegrationTests(unittest.TestCase):
         os.environ['BOOTSTRAP_ADMIN_PASSWORD'] = 'Strong-Test-Password-123!'
         os.environ['BOOTSTRAP_ADMIN_USERNAME'] = 'admin'
         os.environ['BOOTSTRAP_ADMIN_NAME'] = 'Administrador Teste'
+        os.environ['FORMS_WEBHOOK_ENABLED'] = 'true'
+        os.environ['FORMS_WEBHOOK_SECRET'] = 'integration-forms-secret'
+        os.environ['OUTLOOK_GRAPH_ENABLED'] = 'true'
+        os.environ['MICROSOFT_TENANT_ID'] = 'test-tenant'
+        os.environ['MICROSOFT_CLIENT_ID'] = 'test-client'
+        os.environ['MICROSOFT_CLIENT_SECRET'] = 'test-secret'
+        os.environ['OUTLOOK_SENDER'] = 'ensino@example.org'
 
         cls.module = importlib.import_module('app')
         cls.module.app.config.update(TESTING=True, DATABASE=cls.db_path)
@@ -27,6 +35,10 @@ class AppIntegrationTests(unittest.TestCase):
         for key in (
             'ERP_DATABASE', 'BOOTSTRAP_ADMIN_PASSWORD',
             'BOOTSTRAP_ADMIN_USERNAME', 'BOOTSTRAP_ADMIN_NAME',
+            'FORMS_WEBHOOK_ENABLED', 'FORMS_WEBHOOK_SECRET',
+            'OUTLOOK_GRAPH_ENABLED', 'MICROSOFT_TENANT_ID',
+            'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET',
+            'OUTLOOK_SENDER',
         ):
             os.environ.pop(key, None)
 
@@ -233,6 +245,128 @@ class AppIntegrationTests(unittest.TestCase):
         sent = self.client.post(f'/api/residentes/{rid}/certificado', json={'acao': 'enviar'})
         self.assertEqual(sent.status_code, 200, sent.get_data(as_text=True))
         self.assertIsNotNone(sent.get_json()['certificado']['certificado_enviado_em'])
+
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
+
+    def test_microsoft_forms_webhook_is_idempotent_and_enters_triage(self):
+        payload = {
+            'form_id': 'estagio-optativo',
+            'response_id': 'resp-1001',
+            'nome': 'Aluno Forms Integracao',
+            'email': 'aluno.forms@example.org',
+            'telefone': '(51) 99999-1234',
+            'tipo': 'Residente',
+            'modalidade': 'Optativo',
+            'especialidade': 'Cardiologia',
+            'instituicao_origem': 'Universidade Teste',
+            'mes_desejado': 'novembro 2026',
+            'periodo_desejado': '01/11/2026 a 30/11/2026',
+        }
+        headers = {'X-Forms-Webhook-Secret': 'integration-forms-secret'}
+
+        created = self.client.post(
+            '/api/integracoes/forms/inscricao', json=payload, headers=headers
+        )
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        repeated = self.client.post(
+            '/api/integracoes/forms/inscricao', json=payload, headers=headers
+        )
+        self.assertEqual(repeated.status_code, 200, repeated.get_data(as_text=True))
+        self.assertTrue(repeated.get_json()['duplicado'])
+        self.assertEqual(repeated.get_json()['id'], rid)
+
+        rejected = self.client.post(
+            '/api/integracoes/forms/inscricao',
+            json={**payload, 'response_id': 'resp-invalid-secret'},
+            headers={'X-Forms-Webhook-Secret': 'wrong-secret'},
+        )
+        self.assertEqual(rejected.status_code, 401)
+
+        with sqlite3.connect(self.db_path) as db:
+            resident = db.execute(
+                """SELECT nome, mes_ano, status, origem, origem_ref
+                   FROM residentes WHERE id=?""",
+                (rid,),
+            ).fetchone()
+            self.assertEqual(resident[0], 'Aluno Forms Integracao')
+            self.assertEqual(resident[1], '2026-11')
+            self.assertEqual(resident[2], 'Interessado')
+            self.assertEqual(resident[3], 'microsoft_forms')
+            self.assertEqual(resident[4], 'estagio-optativo:resp-1001')
+
+            pipeline = db.execute(
+                """SELECT etapa, situacao FROM pipeline_acoes
+                   WHERE residente_id=? ORDER BY id""",
+                (rid,),
+            ).fetchall()
+            self.assertEqual(pipeline, [(1, 'pendente')])
+
+            audit = db.execute(
+                """SELECT provider, event_type, status, payload_json
+                   FROM integracao_eventos
+                   WHERE residente_id=? ORDER BY id DESC LIMIT 1""",
+                (rid,),
+            ).fetchone()
+            self.assertEqual(audit[0:3], ('microsoft_forms', 'new_response', 'success'))
+            self.assertNotIn('aluno.forms@example.org', audit[3])
+
+        self.login_admin()
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
+    def test_outlook_pipeline_send_uses_graph_and_is_audited(self):
+        self.login_admin()
+        created = self.client.post('/api/residentes', json={
+            'nome': 'Aluno Outlook Integracao',
+            'email': 'aluno.outlook@example.org',
+            'especialidade': 'Cardiologia',
+            'mes_ano': '2026-11',
+            'tipo': 'Residente',
+            'modalidade': 'Optativo',
+            'status': 'Interessado',
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        with patch('microsoft_integrations._send_graph_mail') as mocked_send:
+            response = self.client.post('/api/integracoes/outlook/enviar', json={
+                'residente_id': rid,
+                'etapa': 2,
+                'destinatario': 'aluno.outlook@example.org',
+                'assunto': 'Confirmação do estágio',
+                'mensagem': 'Mensagem de teste do pipeline.',
+            })
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertTrue(response.get_json()['enviado'])
+        mocked_send.assert_called_once()
+        call = mocked_send.call_args.kwargs
+        self.assertEqual(call['to'], 'aluno.outlook@example.org')
+        self.assertEqual(call['subject'], 'Confirmação do estágio')
+        self.assertEqual(call['body'], 'Mensagem de teste do pipeline.')
+
+        with sqlite3.connect(self.db_path) as db:
+            event = db.execute(
+                """SELECT provider, event_type, direction, status, responsavel, payload_json
+                   FROM integracao_eventos
+                   WHERE residente_id=? AND provider='outlook'
+                   ORDER BY id DESC LIMIT 1""",
+                (rid,),
+            ).fetchone()
+            self.assertEqual(event[0:4], ('outlook', 'send_mail', 'outbound', 'success'))
+            self.assertEqual(event[4], 'Administrador Teste')
+            self.assertNotIn('Mensagem de teste do pipeline.', event[5])
+
+        status = self.client.get('/api/integracoes/status')
+        self.assertEqual(status.status_code, 200)
+        integrations = status.get_json()
+        self.assertTrue(integrations['microsoft_forms']['configured'])
+        self.assertTrue(integrations['outlook']['configured'])
+        self.assertNotIn('test-secret', status.get_data(as_text=True))
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
         self.assertEqual(deleted.status_code, 200)
