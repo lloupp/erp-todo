@@ -2,34 +2,35 @@
 
 ## Project Overview
 
-Medical internship management system for Santa Casa / UFCSPA built with Flask + SQLite. Tracks internships (Observership, Obrigatório, Optativo) through a 9-stage workflow with filtering, history tracking, certificate generation, contact reports, and CSV export compatible with Microsoft tools.
+Medical internship management system for Santa Casa / UFCSPA built with Flask + SQLite. Tracks internships (Observership, Obrigatório, Optativo) and Residents/Doutorandos through workflow stages, filtering, history, documents, reports and exports.
 
 ## Architecture & Data Flow
 
-- **Backend**: Single-file Flask app (`app.py`) — all routes, DB init, constants, and business logic
-- **Frontend**: Vanilla JS + CSS served via Flask templates; no build step
-- **Auth**: `flask-login` with session cookies; role-based (admin/user)
-- **PDF**: `flask-weasyprint` for internship forms and certificates
-- **Excel import**: `openpyxl` with preview/confirm pattern
-- **Production server**: Waitress (Windows) via `run_prod.py`; Gunicorn (Linux) via `gunicorn.conf.py`
+- **Application entry point**: `app.py` is the supported safe facade. It exposes the Flask application, installs security guards, uses adaptive password hashing and bootstraps the database through `db_migrations.py`.
+- **Legacy route implementation**: `legacy_app.py` contains the historical route/business implementation imported by the safe facade. Do not use it as a startup command or migration entry point.
+- **Database migrations**: `db_migrations.py` owns additive, idempotent bootstrap/migrations. Supported startup paths must use it; do not add migration SQL to a `__main__` block.
+- **Frontend**: Vanilla JS + CSS served via Flask templates; no build step.
+- **Auth**: `flask-login` with session cookies; role-based (`admin`/`user`). Sensitive administrative mutations are additionally protected by `production_guards.py`.
+- **PDF**: `flask-weasyprint` for internship forms and certificates.
+- **Excel import**: `openpyxl` with preview/confirm pattern.
+- **Production**: Waitress on Windows via `run_prod.py`; Gunicorn on Linux via `wsgi:app`.
 
 ## Key Files
 
 | Path | Purpose |
 |------|---------|
-| `app.py` | Flask app, all routes, DB init, ETAPAS constants, business logic |
-| `templates/index.html` | Main internship list + modals |
-| `templates/dashboard.html` | Stats and charts |
-| `templates/relatorios.html` | Contact report templates (4 types) |
-| `templates/usuarios.html` | User management (admin) |
-| `templates/certificado.html` | Certificate PDF template (WeasyPrint) |
-| `templates/pdf_ficha.html` | Internship form PDF template |
-| `static/js/app.js` | Main client logic: CRUD, modals, filters, welcome banner |
-| `static/js/dashboard.js` | Dashboard chart rendering |
-| `static/css/style.css` | All styling, CSS variables, responsive |
-| `run_prod.py` | Production startup (Waitress + dotenv + SECRET_KEY validation) |
-| `backup.py` | Windows-compatible backup script |
-| `backup.sh` | Linux backup script |
+| `app.py` | Safe Flask facade and supported development entry point |
+| `legacy_app.py` | Historical routes/business logic; imported by `app.py`, not a supported startup command |
+| `db_migrations.py` | Safe, idempotent SQLite bootstrap/migrations |
+| `password_security.py` | Adaptive password hashing + legacy-hash verification |
+| `production_guards.py` | Admin mutation guard + HTTP security headers |
+| `wsgi.py` | Hardened production WSGI entry point |
+| `run_prod.py` | Production startup via Waitress |
+| `tests/` | Unit and Flask integration tests |
+| `.github/workflows/quality.yml` | Compile + test quality gate |
+| `templates/` | Jinja templates |
+| `static/` | Vanilla JS/CSS assets |
+| `backup.py` / `backup.sh` | Database backup helpers |
 | `.env.example` | Environment variable reference |
 | `estagios.db` | SQLite database (gitignored) |
 
@@ -41,38 +42,40 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Development (debug=True, auto-reload)
+# Configure a local .env. On a fresh/empty database, set a strong bootstrap password.
+cp .env.example .env
+# BOOTSTRAP_ADMIN_PASSWORD=<strong-local-password>
+
+# Supported development startup
 python app.py
 
-# Production (Waitress, Windows VPS)
-copy .env.example .env   # fill SECRET_KEY
+# Production — Windows / Waitress
 python run_prod.py
 
-# Reset database
-rm estagios.db && python app.py
+# Production — Linux / Gunicorn
+gunicorn -c gunicorn.conf.py wsgi:app
+
+# Quality gate
+python -m compileall -q .
+python -m unittest discover -s tests -v
 
 # Backup
-python backup.py          # Windows
-./backup.sh               # Linux
+python backup.py
+./backup.sh
 ```
 
-Default credentials: `admin/admin` (role: admin), `user/user` (role: user).
+There are **no default application credentials**. A fresh database requires `BOOTSTRAP_ADMIN_PASSWORD`; optional `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_NAME` customize the first admin account. Remove the bootstrap password from the environment after the first successful initialization.
 
-## Database Schema
+Never start the application with `python legacy_app.py`. Never reintroduce `admin/admin`, `user/user`, destructive database initialization, or unconditional data-rewrite migrations at process startup.
 
-```sql
-tipo_estagio(id, nome)            -- 1=Observership, 2=Obrigatorio, 3=Optativo
-usuarios(id, username, password_hash, nome, role, last_login)
-estagios(id, tipo_id, mes_ano, semana, nome, cpf, especialidade, cracha,
-         valor, forma_pagamento, status_pagamento, comprovante_pagamento,
-         inicio, termino, email, telefone, observacao, documentos,
-         envio_certificado, etapa, carga_horaria, created_at, updated_at)
-historico_etapas(id, estagio_id, etapa, observacao, responsavel, ts)
-notificacoes(id, estagio_id, tipo, mensagem, email_destino, enviado, ts)
-limite_especialidade(id, especialidade, limite_semanal)
-```
+## Database Safety Rules
 
-Schema migrations are inline in the `if __name__ == '__main__':` block via `ALTER TABLE` — no migration framework. Migrations only run when starting with `python app.py`, not with Waitress/Gunicorn.
+- All schema/bootstrap changes belong in `db_migrations.py` and must be idempotent.
+- Startup migrations must preserve operational records.
+- Never use broad `DELETE FROM ...` statements as part of bootstrap/reset logic.
+- Never replay historical data transformations such as blindly rewriting workflow stage 7 to stage 8 on every start.
+- Tests must use a temporary database or an explicit test database path; never mutate `estagios.db`.
+- A fresh installation may create only the explicitly configured bootstrap admin, not demo users or demo operational data.
 
 ## Workflow Stages
 
@@ -90,72 +93,47 @@ Observership starts at stage 1; Obrigatório/Optativo starts at stage 0. All sha
 | 7 | Comprovante recebido | Comprovante recebido |
 | 8 | Concluído | Concluído |
 
-★ Advancing to stage 2 automatically sets `status_pagamento = 'Pago'`.  
-Certificate PDF is unlocked from stage 7.
+★ Advancing to stage 2 automatically sets `status_pagamento = 'Pago'`.
 
-Constants: `ETAPAS_OBS`, `ETAPAS_OBR_OPT`, `ETAPA_COLORS` in `app.py`.
+Resident/Doutorando workflow rules are defined by `PIPELINE_ETAPAS` and `PIPELINE_TRANSICOES`; see `PIPELINE.md` and integration tests before changing transitions.
 
-## Key API Endpoints
+## Key API Expectations
 
-All require login (`@login_required`). Admin-only endpoints check `current_user.role`.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/estagios` | Paginated list (15/page); filters: `tipo_id`, `especialidade`, `etapa`, `mes_ano`, `semana`, `busca`, `status_pagamento` |
-| POST | `/api/estagios` | Create internship |
-| PUT | `/api/estagios/<id>` | Update internship |
-| DELETE | `/api/estagios/<id>` | Delete (cascades notificacoes → historico_etapas → estagios) |
-| POST | `/api/estagios/<id>/avancar` | Advance stage; sets Pago if new stage=2 |
-| POST | `/api/estagios/<id>/pago` | Quick-mark as Pago; returns 404 if id not found |
-| GET | `/api/estagios/<id>/historico` | Stage history |
-| GET | `/api/estagios/<id>/pdf` | WeasyPrint internship form |
-| GET | `/api/estagios/<id>/certificado` | Certificate PDF (requires stage ≥ 7) |
-| GET | `/api/exportar-csv` | CSV export (BOM UTF-8, `;` separator, CRLF — Excel-ready) |
-| GET | `/api/relatorios/exportar` | Contact reports; params: `relatorio`, `preview=1` for JSON |
-| POST | `/api/importar-excel` | Excel import; `confirmar=0` preview, `confirmar=1` commit |
-| GET | `/api/dashboard` | Aggregated stats |
-| GET | `/api/pendencias` | Pending items for welcome banner |
-| GET | `/api/vagas` | Weekly capacity by specialty |
+- Application APIs require authentication unless explicitly public (for example `/health`).
+- Administrative configuration mutations under `/api/area-medica`, `/api/mensagens-modelo`, `/api/usuarios` and `/api/limites` must be admin-only.
+- Login redirects must remain local; external `next` targets must never be honored.
+- CSV responses remain UTF-8 BOM compatible with Microsoft tools.
+- Pipeline changes must preserve the invariant that a resident has at most one current pending action.
 
 ## Code Conventions
 
-### Python (Flask)
-- DB access via `get_db()` returning connection from Flask `g`; closed by `@app.teardown_appcontext`
-- `sqlite3.Row` factory for dict-like access
-- SQLite `lower()` does NOT handle accented characters — use Python `.lower()` for case-insensitive dedup
-- `dias_na_etapa` computed via `julianday()` subquery against `historico_etapas`
-- CSV responses: always include UTF-8 BOM (`﻿`), `\r\n` line endings, `Content-Type: text/csv; charset=utf-8`
+### Python / Flask
+- DB access uses `get_db()` and Flask `g`; connections close in teardown.
+- `sqlite3.Row` is used for dict-like rows.
+- SQLite `lower()` does not correctly normalize accented Portuguese text; use Python normalization/lowercasing where semantic matching requires it.
+- New passwords must use `password_security.hash_password`; legacy hashes are read-only compatibility.
+- Keep startup/security behavior in the safe facade/modules rather than duplicating it in route code.
 
-### JavaScript (Vanilla ES6)
-- `apiFetch(url, options)` wraps fetch + JSON parsing + error toasts
-- Modals use `.open` class for visibility (except `usuarios.html` which uses `.active` — do not change without updating both HTML and JS)
-- `loadEstagios()` re-renders the full table after any mutation
-- Stage progress bar renders `Array.from({length: 9 - minEtapa}, ...)` (9 stages total)
-
-### CSS
-- Custom properties in `:root`: `--color-primary`, `--color-border`, etc.
-- Button classes: `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.btn-sm`
-- Responsive breakpoint: `max-width: 900px`
-- Theme (light/dark) saved in `localStorage` as `theme`
-
-## Known Quirks
-
-- SQLite `lower()` doesn't handle accents (`CLÍNICA` → `clÍnica`). All case-insensitive comparisons with accented strings must use Python `.lower()`, never SQL `lower()`.
-- `cracha` values `0` or `"Devolvido"` from spreadsheet are converted to `NULL` by the parser.
-- The 2026 spreadsheet tab has multiple months in sequence with month-header rows detected by regex.
-- Migrations only run in `if __name__ == '__main__':` — must run `python app.py` once before switching to Waitress/Gunicorn on a fresh deploy.
-- Modal visibility: `index.html`/`dashboard.html`/`relatorios.html` use `.open`; `usuarios.html` uses `.active`.
+### JavaScript
+- `apiFetch(url, options)` wraps fetch + JSON parsing + error toasts.
+- Main modals use `.open`; `usuarios.html` uses `.active`.
+- Update both HTML and JS if changing modal conventions.
 
 ## Environment Variables
 
-See `.env.example`. Required in production:
+See `.env.example`. Important variables include:
 
-| Variable | Default | Required |
-|---|---|---|
-| `SECRET_KEY` | `chave-super-secreta-...` | Yes (production) |
-| `PORT` | `5000` | No |
-| `SMTP_ENABLED` | `false` | No |
-| `SMTP_HOST` | `smtp.gmail.com` | If SMTP enabled |
-| `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | — | If SMTP enabled |
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | Required for production session security |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Required only when creating the first admin on a fresh/empty DB |
+| `BOOTSTRAP_ADMIN_USERNAME` | Optional first-admin username, defaults to `admin` |
+| `BOOTSTRAP_ADMIN_NAME` | Optional first-admin display name |
+| `ERP_DATABASE` | Optional alternate SQLite path, useful for tests/isolated deployments |
+| `PORT` | Server port |
+| `WAITRESS_THREADS` | Waitress worker thread count |
+| `SMTP_*` | Optional email configuration |
 
-`run_prod.py` loads `.env` automatically via `python-dotenv` and exits with a clear error if `SECRET_KEY` is unset or still the default.
+## Before Merging
+
+Run the full quality gate. For changes touching auth, startup, migrations, residents or pipeline behavior, add/extend integration coverage. A green compile alone is not sufficient; the unit/integration suite must also pass.
