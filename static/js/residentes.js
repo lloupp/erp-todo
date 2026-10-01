@@ -722,6 +722,7 @@ function renderTabela(rows) {
             <td style="white-space:nowrap;">
                 ${r.telefone ? `<a class="btn btn-sm btn-whatsapp" href="${whatsappLink(r.telefone, r.nome)}" target="_blank" rel="noopener" title="Contatar ${esc(r.nome)} via WhatsApp">&#128241;</a>` : ''}
                 <button class="btn btn-sm btn-area-medica" onclick="abrirModalAreaMedica(${r.id})" title="Falar com a Área Médica (chefe de serviço)">&#127973;</button>
+                <button class="btn btn-sm btn-ghost" onclick="abrirAcademico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Acompanhamento acadêmico">&#127891;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirHistorico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Historico">&#9776;</button>
                 ${proximoStatus(r.status) ? `<button class="btn btn-sm btn-primary" onclick="abrirModalAvancar(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}','${esc(r.status)}')" title="Avançar status">&#9654;</button>` : ''}
                 <button class="btn btn-sm btn-ghost" onclick="abrirModalEditar(${r.id})" title="Editar">&#9998;</button>
