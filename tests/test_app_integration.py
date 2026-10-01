@@ -177,5 +177,66 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+    def test_academic_tracking_and_certificate_gate(self):
+        self.login_admin()
+        created = self.client.post('/api/residentes', json={
+            'nome': 'Aluno Academico',
+            'especialidade': 'Cardiologia',
+            'mes_ano': '2026-11',
+            'tipo': 'Doutorando',
+            'modalidade': 'Optativo',
+            'status': 'Concluído',
+            'status_pagamento': 'Pago',
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        initial = self.client.get(f'/api/residentes/{rid}/academico')
+        self.assertEqual(initial.status_code, 200)
+        self.assertFalse(initial.get_json()['certificado']['apto'])
+
+        hours = self.client.put(f'/api/residentes/{rid}/academico', json={
+            'carga_horaria_prevista': 80,
+            'carga_horaria_realizada': 80,
+        })
+        self.assertEqual(hours.status_code, 200, hours.get_data(as_text=True))
+        self.assertFalse(hours.get_json()['certificado']['apto'])
+
+        document = self.client.post(f'/api/residentes/{rid}/documentos', json={
+            'nome': 'Documento de identificacao',
+            'obrigatorio': True,
+            'status': 'Recebido',
+        })
+        self.assertEqual(document.status_code, 200, document.get_data(as_text=True))
+        doc_id = document.get_json()['id']
+
+        blocked = self.client.post(f'/api/residentes/{rid}/certificado', json={'acao': 'emitir'})
+        self.assertEqual(blocked.status_code, 409)
+
+        approved = self.client.post(f'/api/residentes/{rid}/documentos', json={
+            'id': doc_id,
+            'nome': 'Documento de identificacao',
+            'obrigatorio': True,
+            'status': 'Aprovado',
+            'observacao': 'Conferido',
+        })
+        self.assertEqual(approved.status_code, 200, approved.get_data(as_text=True))
+
+        academic = self.client.get(f'/api/residentes/{rid}/academico').get_json()
+        self.assertTrue(academic['certificado']['apto'])
+        self.assertEqual(academic['certificado']['progresso_horas'], 100)
+
+        issued = self.client.post(f'/api/residentes/{rid}/certificado', json={'acao': 'emitir'})
+        self.assertEqual(issued.status_code, 200, issued.get_data(as_text=True))
+        self.assertIsNotNone(issued.get_json()['certificado']['certificado_emitido_em'])
+
+        sent = self.client.post(f'/api/residentes/{rid}/certificado', json={'acao': 'enviar'})
+        self.assertEqual(sent.status_code, 200, sent.get_data(as_text=True))
+        self.assertIsNotNone(sent.get_json()['certificado']['certificado_enviado_em'])
+
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
+
 if __name__ == '__main__':
     unittest.main()
