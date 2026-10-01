@@ -392,6 +392,51 @@
         </div>
     </div>
 
+
+    <!-- ═══════════════════ MODAL ACOMPANHAMENTO ACADÊMICO ═══════════════════ -->
+    <div class="modal-overlay" id="modal-academico">
+        <div class="modal" style="max-width:900px;width:96%;">
+            <div class="modal-header">
+                <h3 id="academico-titulo">Acompanhamento acadêmico</h3>
+                <button class="modal-close" onclick="fecharModal('modal-academico')">&#10005;</button>
+            </div>
+            <div class="modal-body" id="academico-conteudo" style="display:flex;flex-direction:column;gap:16px;">
+                <div id="academico-certificado" style="padding:12px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);"></div>
+
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                    <label style="flex:1;min-width:180px;">Carga horária prevista
+                        <input id="academico-prevista" type="number" min="0" step="0.5" placeholder="Ex.: 80" style="width:100%;height:36px;margin-top:4px;">
+                    </label>
+                    <label style="flex:1;min-width:180px;">Carga horária realizada
+                        <input id="academico-realizada" type="number" min="0" step="0.5" placeholder="Ex.: 80" style="width:100%;height:36px;margin-top:4px;">
+                    </label>
+                    <button class="btn btn-primary" onclick="salvarHorasAcademicas()">Salvar horas</button>
+                </div>
+
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                        <strong>Checklist de documentos</strong>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <input id="academico-doc-novo" placeholder="Nome do documento" style="height:34px;min-width:230px;">
+                            <label style="font-size:12px;"><input id="academico-doc-obrigatorio" type="checkbox" checked> Obrigatório</label>
+                            <button class="btn btn-sm btn-secondary" onclick="adicionarDocumentoAcademico()">Adicionar</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="recent-table" style="width:100%;min-width:760px;">
+                            <thead><tr><th>Documento</th><th>Obrigatório</th><th>Status</th><th>Observação</th><th>Atualizado por</th><th>Ações</th></tr></thead>
+                            <tbody id="academico-docs-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <small style="margin-right:auto;color:var(--color-text-secondary);">A aptidão é calculada automaticamente a partir de conclusão, pagamento, horas e documentos.</small>
+                <button class="btn btn-ghost" onclick="fecharModal('modal-academico')">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════════════ MODAL EXCLUIR ═══════════════════ -->
     <div class="modal-overlay" id="modal-excluir">
         <div class="modal" style="max-width:400px;">
@@ -443,6 +488,6 @@
     <!-- Toast -->
     <div id="toast-container" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;"></div>
 
-    <script src="/static/js/residentes.js?v={{ range(1,99999)|random }}"></script>
+    <script src="/static/js/residentes.js?v={{ range(1,99999)|random }}"></script>\n    <script src="/static/js/residentes_academico.js?v={{ range(1,99999)|random }}"></script>
 </body>
 </html>
