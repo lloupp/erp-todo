@@ -209,6 +209,8 @@ def ensure_database(
                 data_inscricao TEXT,
                 periodo_desejado TEXT,
                 mes_desejado TEXT,
+                origem TEXT,
+                origem_ref TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
@@ -273,6 +275,25 @@ def ensure_database(
                 ON residente_documentos(residente_id, nome COLLATE NOCASE);
             CREATE INDEX IF NOT EXISTS idx_residente_documentos_status
                 ON residente_documentos(residente_id, obrigatorio, status);
+
+            CREATE TABLE IF NOT EXISTS integracao_eventos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                status TEXT NOT NULL,
+                residente_id INTEGER REFERENCES residentes(id) ON DELETE SET NULL,
+                external_id TEXT,
+                payload_json TEXT,
+                erro TEXT,
+                responsavel TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_integracao_eventos_provider
+                ON integracao_eventos(provider, created_at);
+            CREATE INDEX IF NOT EXISTS idx_integracao_eventos_residente
+                ON integracao_eventos(residente_id, created_at);
         ''')
 
         _add_missing_columns(db, 'estagios', [
@@ -292,8 +313,15 @@ def ensure_database(
             ('carga_horaria_realizada', 'REAL'),
             ('certificado_emitido_em', 'DATETIME'),
             ('certificado_enviado_em', 'DATETIME'),
+            ('origem', 'TEXT'),
+            ('origem_ref', 'TEXT'),
         ])
 
+        db.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_residentes_origem_ref
+               ON residentes(origem, origem_ref)
+               WHERE origem_ref IS NOT NULL"""
+        )
         db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
         db.executemany(
             'INSERT OR IGNORE INTO tipo_estagio (id, nome) VALUES (?, ?)',
