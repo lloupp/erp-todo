@@ -24,6 +24,7 @@ jobs:
       - name: Validate JavaScript syntax
         run: |
           node --check static/js/residentes.js
+          node --check static/js/residentes_academico.js
           node --check static/js/residentes_ux.js
           node --check static/js/relatorios_dashboard.js
           node --check static/js/ai.js

@@ -43,6 +43,9 @@ hash_password = hash_password
 verify_password = verify_password
 app = _legacy.app
 
+from sge_academico import register_sge_academico
+register_sge_academico(app, _legacy.get_db)
+
 # Tests and alternate deployments can point the application at another SQLite
 # file without mutating the repository working tree.
 if os.environ.get('ERP_DATABASE'):
