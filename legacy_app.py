@@ -2495,15 +2495,33 @@ def api_pipeline_fila():
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
-               pa.reagendado_para,
+               pa.reagendado_para, pa.prazo_em, pa.prioridade, pa.bloqueado,
+               pa.bloqueio_motivo, pa.atribuido_a, pa.atualizado_em,
                r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
-               r.email, r.valor, r.comprovante_pagamento,
+               r.email, r.valor, r.status_pagamento, r.comprovante_pagamento,
                r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
-               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado,
+               CASE WHEN pa.prazo_em IS NULL THEN NULL
+                    ELSE CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)
+               END as dias_atraso,
+               (
+                 CASE pa.prioridade WHEN 2 THEN 1000 WHEN 1 THEN 300 ELSE 0 END
+                 + CASE
+                     WHEN pa.prazo_em IS NOT NULL AND date(pa.prazo_em) < date('now')
+                       THEN 500 + MIN(90, CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)) * 5
+                     WHEN pa.prazo_em IS NOT NULL AND date(pa.prazo_em) = date('now')
+                       THEN 250
+                     ELSE 0
+                   END
+                 + CASE WHEN pa.bloqueado=1 THEN 150 ELSE 0 END
+               ) as prioridade_score
         FROM pipeline_acoes pa
         JOIN residentes r ON r.id = pa.residente_id
         WHERE pa.situacao = 'pendente'
-        ORDER BY dias_parado DESC, pa.criado_em ASC
+        ORDER BY prioridade_score DESC,
+                 CASE WHEN pa.prazo_em IS NULL THEN 1 ELSE 0 END,
+                 pa.prazo_em ASC,
+                 pa.criado_em ASC
     ''').fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -2514,17 +2532,85 @@ def api_pipeline_fila_etapa(etapa):
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
-               pa.reagendado_para,
+               pa.reagendado_para, pa.prazo_em, pa.prioridade, pa.bloqueado,
+               pa.bloqueio_motivo, pa.atribuido_a, pa.atualizado_em,
                r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
-               r.email, r.valor, r.comprovante_pagamento,
+               r.email, r.valor, r.status_pagamento, r.comprovante_pagamento,
                r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
-               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado,
+               CASE WHEN pa.prazo_em IS NULL THEN NULL
+                    ELSE CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)
+               END as dias_atraso
         FROM pipeline_acoes pa
         JOIN residentes r ON r.id = pa.residente_id
         WHERE pa.situacao = 'pendente' AND pa.etapa = ?
-        ORDER BY dias_parado DESC, pa.criado_em ASC
+        ORDER BY pa.prioridade DESC,
+                 CASE WHEN pa.prazo_em IS NULL THEN 1 ELSE 0 END,
+                 pa.prazo_em ASC,
+                 pa.criado_em ASC
     ''', (etapa,)).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/pipeline/acoes/<int:acao_id>', methods=['PUT'])
+@login_required
+def api_pipeline_atualizar_acao(acao_id):
+    db = get_db()
+    acao = db.execute(
+        "SELECT * FROM pipeline_acoes WHERE id=? AND situacao='pendente'",
+        (acao_id,),
+    ).fetchone()
+    if not acao:
+        return jsonify({'erro': 'Acao pendente nao encontrada'}), 404
+
+    d = request.get_json() or {}
+
+    try:
+        prioridade = int(d.get('prioridade', acao['prioridade'] or 0))
+    except (TypeError, ValueError):
+        return jsonify({'erro': 'Prioridade invalida'}), 400
+    if prioridade not in (0, 1, 2):
+        return jsonify({'erro': 'Prioridade deve ser 0, 1 ou 2'}), 400
+
+    prazo_em = d.get('prazo_em', acao['prazo_em'])
+    if prazo_em == '':
+        prazo_em = None
+    if prazo_em:
+        try:
+            datetime.strptime(str(prazo_em), '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'erro': 'Prazo deve estar no formato AAAA-MM-DD'}), 400
+
+    bloqueado = 1 if d.get('bloqueado', bool(acao['bloqueado'])) else 0
+    bloqueio_motivo = (d.get('bloqueio_motivo') or '').strip() or None
+    if bloqueado and not bloqueio_motivo:
+        return jsonify({'erro': 'Informe o motivo do bloqueio'}), 400
+    if not bloqueado:
+        bloqueio_motivo = None
+
+    atribuido_a = acao['atribuido_a']
+    if d.get('assumir'):
+        atribuido_a = current_user.nome
+    elif d.get('liberar_responsavel'):
+        atribuido_a = None
+
+    db.execute(
+        """UPDATE pipeline_acoes
+           SET prioridade=?, prazo_em=?, bloqueado=?, bloqueio_motivo=?,
+               atribuido_a=?, atualizado_em=CURRENT_TIMESTAMP
+           WHERE id=? AND situacao='pendente'""",
+        (prioridade, prazo_em, bloqueado, bloqueio_motivo, atribuido_a, acao_id),
+    )
+    db.commit()
+
+    updated = db.execute(
+        """SELECT id as acao_id, residente_id, etapa, acao_tipo, situacao,
+                  reagendado_para, prazo_em, prioridade, bloqueado,
+                  bloqueio_motivo, atribuido_a, criado_em, atualizado_em
+           FROM pipeline_acoes WHERE id=?""",
+        (acao_id,),
+    ).fetchone()
+    return jsonify(dict(updated))
 
 
 @app.route('/api/pipeline/residente/<int:rid>', methods=['GET'])
@@ -2546,15 +2632,39 @@ def api_pipeline_dashboard():
         FROM pipeline_acoes WHERE situacao='pendente'
         GROUP BY etapa
     ''').fetchall()
-    criticos = db.execute('''
-        SELECT COUNT(*) as total FROM pipeline_acoes
+
+    resumo = db.execute('''
+        SELECT
+            COUNT(*) as pendentes_total,
+            COUNT(*) FILTER (
+                WHERE prazo_em IS NOT NULL AND date(prazo_em) < date('now')
+            ) as atrasados,
+            COUNT(*) FILTER (
+                WHERE prazo_em IS NOT NULL AND date(prazo_em) = date('now')
+            ) as vencem_hoje,
+            COUNT(*) FILTER (WHERE bloqueado=1) as bloqueados,
+            COUNT(*) FILTER (WHERE atribuido_a IS NULL OR trim(atribuido_a)='') as sem_responsavel,
+            COUNT(*) FILTER (
+                WHERE prioridade=2
+                   OR (prazo_em IS NOT NULL
+                       AND CAST(julianday('now') - julianday(prazo_em) AS INTEGER) >= 3)
+            ) as criticos
+        FROM pipeline_acoes
         WHERE situacao='pendente'
-          AND CAST(julianday('now') - julianday(criado_em) AS INTEGER) > 14
-    ''').fetchone()['total']
-    feitos = db.execute("SELECT COUNT(*) as total FROM pipeline_acoes WHERE situacao='feita'").fetchone()['total']
+    ''').fetchone()
+
+    feitos = db.execute(
+        "SELECT COUNT(*) as total FROM pipeline_acoes WHERE situacao='feita'"
+    ).fetchone()['total']
+
     return jsonify({
         'pendentes_por_etapa': {str(r['etapa']): r['total'] for r in pendentes_por_etapa},
-        'criticos': criticos,
+        'pendentes_total': resumo['pendentes_total'] or 0,
+        'atrasados': resumo['atrasados'] or 0,
+        'vencem_hoje': resumo['vencem_hoje'] or 0,
+        'bloqueados': resumo['bloqueados'] or 0,
+        'sem_responsavel': resumo['sem_responsavel'] or 0,
+        'criticos': resumo['criticos'] or 0,
         'feitos': feitos,
     })
 
