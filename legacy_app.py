@@ -147,7 +147,21 @@ PIPELINE_ETAPAS = {
     6: 'enviar_link_docs',
     7: 'analisar_comprovante',
     8: 'orientacoes_1o_dia',
+    9: 'concluir_estagio',
 }
+
+# Prazo operacional padrao por etapa. Etapas 8 e 9 usam datas do proprio
+# estagio (inicio - 7 dias e termino, respectivamente).
+PIPELINE_SLA_DIAS = {
+    1: 1,   # triagem
+    2: 3,   # confirmar aluno
+    3: 7,   # acionar chefe
+    4: 7,   # aguardar deferimento
+    5: 2,   # solicitar link financeiro
+    6: 2,   # enviar link + documentos
+    7: 7,   # receber/validar comprovante e documentos
+}
+
 # transições válidas por etapa: resultado -> (proximo_status_residente|None, proxima_etapa|None)
 PIPELINE_TRANSICOES = {
     1: {
@@ -175,8 +189,15 @@ PIPELINE_TRANSICOES = {
         'comprovante_ok': ('Confirmado', 8),
         'falta_documento': (None, 6),
     },
+    # Enviar orientacoes NAO conclui o estagio. Abre a etapa final, que fica
+    # agendada para a data de termino.
     8: {
-        'enviado': ('Concluído', None),
+        'enviado': (None, 9),
+    },
+    9: {
+        'concluido': ('Concluído', None),
+        'nao_veio': ('Nao veio', None),
+        'cancelado': ('Cancelado', None),
     },
 }
 
@@ -2177,13 +2198,53 @@ def api_get_residentes():
 # ── Pipeline de atendimento (Residentes) ──────────────────────
 # Ver PIPELINE.md para o desenho funcional completo. Regra central: cada
 # residente tem no maximo uma acao 'pendente' por vez (a etapa corrente).
-RESULTADOS_PULADOS = {'indefere', 'desistiu'}
+RESULTADOS_PULADOS = {'indefere', 'desistiu', 'nao_veio', 'cancelado'}
+
+
+def calcular_prazo_pipeline(db, residente_id, etapa, reagendado_para=None):
+    """Resolve a data-alvo da proxima acao sem alterar dados."""
+    if reagendado_para:
+        return reagendado_para
+
+    residente = db.execute(
+        'SELECT inicio, termino FROM residentes WHERE id=?', (residente_id,)
+    ).fetchone()
+
+    if etapa == 8:
+        if residente and residente['inicio']:
+            try:
+                return (
+                    datetime.strptime(str(residente['inicio'])[:10], '%Y-%m-%d')
+                    - timedelta(days=7)
+                ).strftime('%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
+    if etapa == 9:
+        if residente and residente['termino']:
+            try:
+                return datetime.strptime(
+                    str(residente['termino'])[:10], '%Y-%m-%d'
+                ).strftime('%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
+    sla = PIPELINE_SLA_DIAS.get(etapa)
+    if sla is None:
+        return None
+    return (datetime.now() + timedelta(days=sla)).strftime('%Y-%m-%d')
 
 
 def criar_acao_pipeline(db, residente_id, etapa, reagendado_para=None):
-    db.execute('''INSERT INTO pipeline_acoes (residente_id, etapa, acao_tipo, situacao, reagendado_para)
-                  VALUES (?, ?, ?, 'pendente', ?)''',
-               (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para))
+    prazo_em = calcular_prazo_pipeline(db, residente_id, etapa, reagendado_para)
+    db.execute(
+        '''INSERT INTO pipeline_acoes
+           (residente_id, etapa, acao_tipo, situacao, reagendado_para, prazo_em)
+           VALUES (?, ?, ?, 'pendente', ?, ?)''',
+        (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para, prazo_em),
+    )
 
 
 def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
