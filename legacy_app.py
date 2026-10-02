@@ -2406,8 +2406,22 @@ def api_update_residente(rid):
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'), rid,
     ))
     if novo_status != row['status']:
+        pendente = db.execute(
+            "SELECT id, etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+            (rid,),
+        ).fetchone()
+        if pendente:
+            db.rollback()
+            return jsonify({
+                'erro': (
+                    f'Existe uma acao pendente na etapa {pendente["etapa"]}. '
+                    'Altere o status pelo pipeline para preservar o historico.'
+                )
+            }), 409
         responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
-        fechar_pipeline_pendente(db, rid, 'Status alterado manualmente (edicao de cadastro)', responsavel)
+        fechar_pipeline_pendente(
+            db, rid, 'Status alterado manualmente (edicao de cadastro)', responsavel
+        )
     db.commit()
     return jsonify({'ok': True})
 
@@ -2448,25 +2462,57 @@ def api_historico_residente(rid):
 @app.route('/api/residentes/<int:rid>/avancar', methods=['POST'])
 @login_required
 def api_avancar_residente(rid):
+    """Compatibilidade legada.
+
+    Mudancas de status devem passar pelo pipeline. Um administrador ainda pode
+    fazer uma correcao excepcional com forcar=true, deixando trilha explicita.
+    """
     db = get_db()
     row = db.execute('SELECT * FROM residentes WHERE id=?', (rid,)).fetchone()
     if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
-    d = request.get_json()
+
+    d = request.get_json() or {}
+    pendente = db.execute(
+        "SELECT id, etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+        (rid,),
+    ).fetchone()
+    forcar = bool(d.get('forcar'))
+    if pendente and not (forcar and getattr(current_user, 'role', None) == 'admin'):
+        return jsonify({
+            'erro': (
+                f'Use a etapa {pendente["etapa"]} do pipeline. '
+                'Avanco manual foi bloqueado para preservar o fluxo.'
+            )
+        }), 409
+
     novo_status = d.get('status', row['status'])
-    obs = d.get('observacao', '')
+    obs = (d.get('observacao') or '').strip()
     responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
 
-    db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-               (novo_status, rid))
     db.execute(
-        'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
-        (rid, novo_status, obs, responsavel)
+        'UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        (novo_status, rid),
     )
-    if novo_status != row['status']:
-        fechar_pipeline_pendente(db, rid, obs or 'Status alterado manualmente (fora do pipeline)', responsavel)
+    db.execute(
+        """INSERT INTO historico_residentes
+           (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)""",
+        (
+            rid,
+            novo_status,
+            obs or '[Correcao administrativa fora do pipeline]',
+            responsavel,
+        ),
+    )
+    if pendente and forcar:
+        fechar_pipeline_pendente(
+            db,
+            rid,
+            obs or 'Correcao administrativa forcada fora do pipeline',
+            responsavel,
+        )
     db.commit()
-    return jsonify({'status': novo_status})
+    return jsonify({'status': novo_status, 'forcado': bool(pendente and forcar)})
 
 
 @app.route('/api/residentes/<int:rid>/acao', methods=['POST'])
