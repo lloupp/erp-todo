@@ -250,6 +250,12 @@ def ensure_database(
                 responsavel TEXT,
                 observacao TEXT,
                 reagendado_para DATE,
+                prazo_em DATE,
+                prioridade INTEGER NOT NULL DEFAULT 0,
+                bloqueado INTEGER NOT NULL DEFAULT 0,
+                bloqueio_motivo TEXT,
+                atribuido_a TEXT,
+                atualizado_em DATETIME,
                 criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                 concluido_em DATETIME
             );
@@ -258,6 +264,8 @@ def ensure_database(
                 ON pipeline_acoes(residente_id);
             CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_situacao
                 ON pipeline_acoes(situacao, etapa);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_prazo
+                ON pipeline_acoes(situacao, prazo_em, prioridade);
 
             CREATE TABLE IF NOT EXISTS residente_documentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -316,6 +324,38 @@ def ensure_database(
             ('origem', 'TEXT'),
             ('origem_ref', 'TEXT'),
         ])
+
+        _add_missing_columns(db, 'pipeline_acoes', [
+            ('prazo_em', 'DATE'),
+            ('prioridade', 'INTEGER NOT NULL DEFAULT 0'),
+            ('bloqueado', 'INTEGER NOT NULL DEFAULT 0'),
+            ('bloqueio_motivo', 'TEXT'),
+            ('atribuido_a', 'TEXT'),
+            ('atualizado_em', 'DATETIME'),
+        ])
+
+        # Backfill de prazo apenas para a acao pendente atual. Nao altera
+        # historico concluido e respeita datas operacionais das etapas 8/9.
+        db.execute("""
+            UPDATE pipeline_acoes
+            SET prazo_em = CASE
+                WHEN etapa = 8 THEN COALESCE(
+                    reagendado_para,
+                    (SELECT date(r.inicio, '-7 days') FROM residentes r
+                     WHERE r.id = pipeline_acoes.residente_id)
+                )
+                WHEN etapa = 9 THEN (
+                    SELECT date(r.termino) FROM residentes r
+                    WHERE r.id = pipeline_acoes.residente_id
+                )
+                WHEN etapa = 1 THEN date(criado_em, '+1 day')
+                WHEN etapa = 2 THEN date(criado_em, '+3 days')
+                WHEN etapa IN (3,4,7) THEN date(criado_em, '+7 days')
+                WHEN etapa IN (5,6) THEN date(criado_em, '+2 days')
+                ELSE NULL
+            END
+            WHERE situacao = 'pendente' AND prazo_em IS NULL
+        """)
 
         db.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_residentes_origem_ref
