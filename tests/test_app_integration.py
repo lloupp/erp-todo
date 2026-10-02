@@ -3,6 +3,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import date, timedelta
 from unittest.mock import patch
 
 
@@ -367,6 +368,179 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertTrue(integrations['microsoft_forms']['configured'])
         self.assertTrue(integrations['outlook']['configured'])
         self.assertNotIn('test-secret', status.get_data(as_text=True))
+
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
+
+    def test_pipeline_task_management_priority_owner_and_block(self):
+        self.login_admin()
+        created = self.client.post('/api/residentes', json={
+            'nome': 'Aluno Fila Pipeline',
+            'especialidade': 'Cardiologia',
+            'mes_ano': '2026-10',
+            'tipo': 'Residente',
+            'modalidade': 'Optativo',
+            'status': 'Interessado',
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        fila = self.client.get('/api/pipeline/fila').get_json()
+        item = next(x for x in fila if x['residente_id'] == rid)
+        self.assertEqual(item['etapa'], 1)
+        self.assertTrue(item['prazo_em'])
+
+        managed = self.client.put(
+            f"/api/pipeline/acoes/{item['acao_id']}",
+            json={
+                'prioridade': 2,
+                'bloqueado': True,
+                'bloqueio_motivo': 'Aguardando documento externo',
+                'assumir': True,
+            },
+        )
+        self.assertEqual(managed.status_code, 200, managed.get_data(as_text=True))
+        payload = managed.get_json()
+        self.assertEqual(payload['prioridade'], 2)
+        self.assertEqual(payload['bloqueado'], 1)
+        self.assertEqual(payload['atribuido_a'], 'Administrador Teste')
+
+        blocked = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 1, 'resultado': 'revisado'},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn('bloqueada', blocked.get_json()['erro'].lower())
+
+        legacy = self.client.post(
+            f'/api/residentes/{rid}/avancar',
+            json={'status': 'Em andamento'},
+        )
+        self.assertEqual(legacy.status_code, 409)
+
+        dashboard = self.client.get('/api/pipeline/dashboard').get_json()
+        self.assertGreaterEqual(dashboard['bloqueados'], 1)
+        self.assertGreaterEqual(dashboard['criticos'], 1)
+
+        unblocked = self.client.put(
+            f"/api/pipeline/acoes/{item['acao_id']}",
+            json={
+                'prioridade': 1,
+                'bloqueado': False,
+                'bloqueio_motivo': '',
+            },
+        )
+        self.assertEqual(unblocked.status_code, 200, unblocked.get_data(as_text=True))
+
+        advanced = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 1, 'resultado': 'revisado'},
+        )
+        self.assertEqual(advanced.status_code, 200, advanced.get_data(as_text=True))
+        self.assertEqual(advanced.get_json()['proxima_etapa'], 2)
+
+        deleted = self.client.delete(f'/api/residentes/{rid}')
+        self.assertEqual(deleted.status_code, 200)
+
+    def test_pipeline_orientation_does_not_finish_internship(self):
+        self.login_admin()
+        inicio = (date.today() + timedelta(days=3)).isoformat()
+        termino_futuro = (date.today() + timedelta(days=10)).isoformat()
+
+        created = self.client.post('/api/residentes', json={
+            'nome': 'Aluno Conclusao Real',
+            'especialidade': 'Cardiologia',
+            'mes_ano': inicio[:7],
+            'tipo': 'Residente',
+            'modalidade': 'Optativo',
+            'status': 'Interessado',
+            'inicio': inicio,
+            'termino': termino_futuro,
+            'status_pagamento': 'Pendente',
+        })
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rid = created.get_json()['id']
+
+        sequence = [
+            (1, 'revisado'),
+            (2, 'confirmou'),
+            (3, 'enviado'),
+            (4, 'defere'),
+            (5, 'solicitado'),
+            (6, 'enviado'),
+        ]
+        for etapa, resultado in sequence:
+            response = self.client.post(
+                f'/api/residentes/{rid}/acao',
+                json={'etapa': etapa, 'resultado': resultado},
+            )
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+        unpaid = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 7, 'resultado': 'comprovante_ok'},
+        )
+        self.assertEqual(unpaid.status_code, 400)
+        self.assertIn('pagamento', unpaid.get_json()['erro'].lower())
+
+        with sqlite3.connect(self.db_path) as db:
+            db.execute(
+                "UPDATE residentes SET status_pagamento='Pago' WHERE id=?",
+                (rid,),
+            )
+            db.commit()
+
+        confirmed = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 7, 'resultado': 'comprovante_ok'},
+        )
+        self.assertEqual(confirmed.status_code, 200, confirmed.get_data(as_text=True))
+        self.assertEqual(confirmed.get_json()['novo_status'], 'Confirmado')
+        self.assertEqual(confirmed.get_json()['proxima_etapa'], 8)
+
+        orientations = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 8, 'resultado': 'enviado'},
+        )
+        self.assertEqual(orientations.status_code, 200, orientations.get_data(as_text=True))
+        self.assertIsNone(orientations.get_json()['novo_status'])
+        self.assertEqual(orientations.get_json()['proxima_etapa'], 9)
+
+        with sqlite3.connect(self.db_path) as db:
+            status = db.execute(
+                "SELECT status FROM residentes WHERE id=?", (rid,)
+            ).fetchone()[0]
+            self.assertEqual(status, 'Confirmado')
+            stage9 = db.execute(
+                """SELECT etapa, prazo_em FROM pipeline_acoes
+                   WHERE residente_id=? AND situacao='pendente'""",
+                (rid,),
+            ).fetchone()
+            self.assertEqual(stage9[0], 9)
+            self.assertEqual(stage9[1], termino_futuro)
+
+        too_early = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 9, 'resultado': 'concluido'},
+        )
+        self.assertEqual(too_early.status_code, 400)
+        self.assertIn('ainda nao pode', too_early.get_json()['erro'].lower())
+
+        termino_passado = (date.today() - timedelta(days=1)).isoformat()
+        with sqlite3.connect(self.db_path) as db:
+            db.execute(
+                "UPDATE residentes SET termino=? WHERE id=?",
+                (termino_passado, rid),
+            )
+            db.commit()
+
+        finished = self.client.post(
+            f'/api/residentes/{rid}/acao',
+            json={'etapa': 9, 'resultado': 'concluido'},
+        )
+        self.assertEqual(finished.status_code, 200, finished.get_data(as_text=True))
+        self.assertEqual(finished.get_json()['novo_status'], 'Concluído')
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
         self.assertEqual(deleted.status_code, 200)
