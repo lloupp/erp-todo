@@ -2628,7 +2628,10 @@ def api_pipeline_atualizar_acao(acao_id):
             return jsonify({'erro': 'Prazo deve estar no formato AAAA-MM-DD'}), 400
 
     bloqueado = 1 if d.get('bloqueado', bool(acao['bloqueado'])) else 0
-    bloqueio_motivo = (d.get('bloqueio_motivo') or '').strip() or None
+    if 'bloqueio_motivo' in d:
+        bloqueio_motivo = (d.get('bloqueio_motivo') or '').strip() or None
+    else:
+        bloqueio_motivo = acao['bloqueio_motivo']
     if bloqueado and not bloqueio_motivo:
         return jsonify({'erro': 'Informe o motivo do bloqueio'}), 400
     if not bloqueado:
