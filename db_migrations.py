@@ -264,8 +264,6 @@ def ensure_database(
                 ON pipeline_acoes(residente_id);
             CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_situacao
                 ON pipeline_acoes(situacao, etapa);
-            CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_prazo
-                ON pipeline_acoes(situacao, prazo_em, prioridade);
 
             CREATE TABLE IF NOT EXISTS residente_documentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -333,6 +331,11 @@ def ensure_database(
             ('atribuido_a', 'TEXT'),
             ('atualizado_em', 'DATETIME'),
         ])
+
+        db.execute(
+            """CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_prazo
+               ON pipeline_acoes(situacao, prazo_em, prioridade)"""
+        )
 
         # Backfill de prazo apenas para a acao pendente atual. Nao altera
         # historico concluido e respeita datas operacionais das etapas 8/9.
