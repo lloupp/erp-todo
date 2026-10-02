@@ -147,7 +147,21 @@ PIPELINE_ETAPAS = {
     6: 'enviar_link_docs',
     7: 'analisar_comprovante',
     8: 'orientacoes_1o_dia',
+    9: 'concluir_estagio',
 }
+
+# Prazo operacional padrao por etapa. Etapas 8 e 9 usam datas do proprio
+# estagio (inicio - 7 dias e termino, respectivamente).
+PIPELINE_SLA_DIAS = {
+    1: 1,   # triagem
+    2: 3,   # confirmar aluno
+    3: 7,   # acionar chefe
+    4: 7,   # aguardar deferimento
+    5: 2,   # solicitar link financeiro
+    6: 2,   # enviar link + documentos
+    7: 7,   # receber/validar comprovante e documentos
+}
+
 # transições válidas por etapa: resultado -> (proximo_status_residente|None, proxima_etapa|None)
 PIPELINE_TRANSICOES = {
     1: {
@@ -175,8 +189,15 @@ PIPELINE_TRANSICOES = {
         'comprovante_ok': ('Confirmado', 8),
         'falta_documento': (None, 6),
     },
+    # Enviar orientacoes NAO conclui o estagio. Abre a etapa final, que fica
+    # agendada para a data de termino.
     8: {
-        'enviado': ('Concluído', None),
+        'enviado': (None, 9),
+    },
+    9: {
+        'concluido': ('Concluído', None),
+        'nao_veio': ('Nao veio', None),
+        'cancelado': ('Cancelado', None),
     },
 }
 
@@ -2177,13 +2198,53 @@ def api_get_residentes():
 # ── Pipeline de atendimento (Residentes) ──────────────────────
 # Ver PIPELINE.md para o desenho funcional completo. Regra central: cada
 # residente tem no maximo uma acao 'pendente' por vez (a etapa corrente).
-RESULTADOS_PULADOS = {'indefere', 'desistiu'}
+RESULTADOS_PULADOS = {'indefere', 'desistiu', 'nao_veio', 'cancelado'}
+
+
+def calcular_prazo_pipeline(db, residente_id, etapa, reagendado_para=None):
+    """Resolve a data-alvo da proxima acao sem alterar dados."""
+    if reagendado_para:
+        return reagendado_para
+
+    residente = db.execute(
+        'SELECT inicio, termino FROM residentes WHERE id=?', (residente_id,)
+    ).fetchone()
+
+    if etapa == 8:
+        if residente and residente['inicio']:
+            try:
+                return (
+                    datetime.strptime(str(residente['inicio'])[:10], '%Y-%m-%d')
+                    - timedelta(days=7)
+                ).strftime('%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
+    if etapa == 9:
+        if residente and residente['termino']:
+            try:
+                return datetime.strptime(
+                    str(residente['termino'])[:10], '%Y-%m-%d'
+                ).strftime('%Y-%m-%d')
+            except ValueError:
+                return None
+        return None
+
+    sla = PIPELINE_SLA_DIAS.get(etapa)
+    if sla is None:
+        return None
+    return (datetime.now() + timedelta(days=sla)).strftime('%Y-%m-%d')
 
 
 def criar_acao_pipeline(db, residente_id, etapa, reagendado_para=None):
-    db.execute('''INSERT INTO pipeline_acoes (residente_id, etapa, acao_tipo, situacao, reagendado_para)
-                  VALUES (?, ?, ?, 'pendente', ?)''',
-               (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para))
+    prazo_em = calcular_prazo_pipeline(db, residente_id, etapa, reagendado_para)
+    db.execute(
+        '''INSERT INTO pipeline_acoes
+           (residente_id, etapa, acao_tipo, situacao, reagendado_para, prazo_em)
+           VALUES (?, ?, ?, 'pendente', ?, ?)''',
+        (residente_id, etapa, PIPELINE_ETAPAS[etapa], reagendado_para, prazo_em),
+    )
 
 
 def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
@@ -2199,51 +2260,90 @@ def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
 
 
 def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
-    """Marca a acao pendente da etapa atual como feita/pulada, muda o status do
-    residente se aplicavel (com registro em historico_residentes) e cria a
-    proxima acao pendente. Nunca envia mensagem nem dispara nada sozinho."""
+    """Conclui a acao atual, valida bloqueios/requisitos e cria a proxima."""
     transicoes = PIPELINE_TRANSICOES.get(etapa_atual, {})
     if resultado not in transicoes:
         raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
+
+    acao = db.execute(
+        """SELECT * FROM pipeline_acoes
+           WHERE residente_id=? AND etapa=? AND situacao='pendente'""",
+        (residente_id, etapa_atual),
+    ).fetchone()
+    if not acao:
+        raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
+    if acao['bloqueado']:
+        motivo = acao['bloqueio_motivo'] or 'sem motivo informado'
+        raise ValueError(f'Acao bloqueada: {motivo}')
+
+    residente = db.execute(
+        """SELECT status, status_pagamento, inicio, termino
+           FROM residentes WHERE id=?""",
+        (residente_id,),
+    ).fetchone()
+    if not residente:
+        raise ValueError('Residente nao encontrado')
+
+    # Guardas de negocio: impedem que o pipeline "pule" requisitos objetivos.
+    if etapa_atual == 7 and resultado == 'comprovante_ok':
+        if residente['status_pagamento'] not in ('Pago', 'Isento'):
+            raise ValueError(
+                'Pagamento ainda nao esta confirmado. Marque como Pago ou Isento antes de confirmar a etapa 7.'
+            )
+
+    if etapa_atual == 8 and resultado == 'enviado':
+        if not residente['inicio'] or not residente['termino']:
+            raise ValueError(
+                'Preencha as datas de inicio e termino antes de concluir o envio das orientacoes.'
+            )
+
+    if etapa_atual == 9 and resultado == 'concluido':
+        if not residente['termino']:
+            raise ValueError('Data de termino obrigatoria para concluir o estagio.')
+        try:
+            termino = datetime.strptime(str(residente['termino'])[:10], '%Y-%m-%d').date()
+        except ValueError as exc:
+            raise ValueError('Data de termino invalida.') from exc
+        if termino > datetime.now().date():
+            raise ValueError(
+                f'O estagio termina em {termino.strftime("%d/%m/%Y")}; ainda nao pode ser marcado como concluido.'
+            )
+
     novo_status, proxima_etapa = transicoes[resultado]
     situacao_acao = 'pulado' if resultado in RESULTADOS_PULADOS else 'feita'
-    # Sem observacao explicita, grava o proprio resultado -- e o que distingue,
-    # por exemplo, 'comprovante_ok' de 'falta_documento' na etapa 7 quando essa
-    # acao aparece depois no historico combinado do residente.
     obs_pipeline = observacao or resultado
 
-    cur = db.execute('''
-        UPDATE pipeline_acoes SET situacao=?, responsavel=?, observacao=?, concluido_em=CURRENT_TIMESTAMP
-        WHERE residente_id=? AND etapa=? AND situacao='pendente'
-    ''', (situacao_acao, responsavel, obs_pipeline, residente_id, etapa_atual))
+    cur = db.execute(
+        """UPDATE pipeline_acoes
+           SET situacao=?, responsavel=?, observacao=?,
+               concluido_em=CURRENT_TIMESTAMP, atualizado_em=CURRENT_TIMESTAMP
+           WHERE id=? AND situacao='pendente'""",
+        (situacao_acao, responsavel, obs_pipeline, acao['id']),
+    )
     if cur.rowcount == 0:
-        raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
+        raise ValueError('A acao pendente mudou antes da confirmacao. Atualize a fila e tente novamente.')
 
     if novo_status:
-        db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-                   (novo_status, residente_id))
         db.execute(
-            'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
-            (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel)
+            'UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (novo_status, residente_id),
+        )
+        db.execute(
+            """INSERT INTO historico_residentes
+               (residente_id, status, observacao, responsavel)
+               VALUES (?,?,?,?)""",
+            (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel),
         )
 
     if proxima_etapa:
-        reagendado_para = None
-        if proxima_etapa == 8:
-            # Etapa 8 (orientacoes 1o dia) so entra na fila com destaque em
-            # T = inicio - 7 dias; sem 'inicio' preenchido, fica pendente sem
-            # data-alvo (cai na fila manual, ver PIPELINE.md passo 8).
-            row = db.execute('SELECT inicio FROM residentes WHERE id=?', (residente_id,)).fetchone()
-            if row and row['inicio']:
-                try:
-                    dt = datetime.strptime(str(row['inicio'])[:10], '%Y-%m-%d') - timedelta(days=7)
-                    reagendado_para = dt.strftime('%Y-%m-%d')
-                except ValueError:
-                    reagendado_para = None
-        criar_acao_pipeline(db, residente_id, proxima_etapa, reagendado_para)
+        criar_acao_pipeline(db, residente_id, proxima_etapa)
 
     db.commit()
-    return {'novo_status': novo_status, 'proxima_etapa': proxima_etapa}
+    return {
+        'novo_status': novo_status,
+        'proxima_etapa': proxima_etapa,
+        'acao_concluida': acao['id'],
+    }
 
 
 @app.route('/api/residentes', methods=['POST'])
@@ -2306,8 +2406,22 @@ def api_update_residente(rid):
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'), rid,
     ))
     if novo_status != row['status']:
+        pendente = db.execute(
+            "SELECT id, etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+            (rid,),
+        ).fetchone()
+        if pendente:
+            db.rollback()
+            return jsonify({
+                'erro': (
+                    f'Existe uma acao pendente na etapa {pendente["etapa"]}. '
+                    'Altere o status pelo pipeline para preservar o historico.'
+                )
+            }), 409
         responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
-        fechar_pipeline_pendente(db, rid, 'Status alterado manualmente (edicao de cadastro)', responsavel)
+        fechar_pipeline_pendente(
+            db, rid, 'Status alterado manualmente (edicao de cadastro)', responsavel
+        )
     db.commit()
     return jsonify({'ok': True})
 
@@ -2348,25 +2462,57 @@ def api_historico_residente(rid):
 @app.route('/api/residentes/<int:rid>/avancar', methods=['POST'])
 @login_required
 def api_avancar_residente(rid):
+    """Compatibilidade legada.
+
+    Mudancas de status devem passar pelo pipeline. Um administrador ainda pode
+    fazer uma correcao excepcional com forcar=true, deixando trilha explicita.
+    """
     db = get_db()
     row = db.execute('SELECT * FROM residentes WHERE id=?', (rid,)).fetchone()
     if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
-    d = request.get_json()
+
+    d = request.get_json() or {}
+    pendente = db.execute(
+        "SELECT id, etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+        (rid,),
+    ).fetchone()
+    forcar = bool(d.get('forcar'))
+    if pendente and not (forcar and getattr(current_user, 'role', None) == 'admin'):
+        return jsonify({
+            'erro': (
+                f'Use a etapa {pendente["etapa"]} do pipeline. '
+                'Avanco manual foi bloqueado para preservar o fluxo.'
+            )
+        }), 409
+
     novo_status = d.get('status', row['status'])
-    obs = d.get('observacao', '')
+    obs = (d.get('observacao') or '').strip()
     responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
 
-    db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-               (novo_status, rid))
     db.execute(
-        'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
-        (rid, novo_status, obs, responsavel)
+        'UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        (novo_status, rid),
     )
-    if novo_status != row['status']:
-        fechar_pipeline_pendente(db, rid, obs or 'Status alterado manualmente (fora do pipeline)', responsavel)
+    db.execute(
+        """INSERT INTO historico_residentes
+           (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)""",
+        (
+            rid,
+            novo_status,
+            obs or '[Correcao administrativa fora do pipeline]',
+            responsavel,
+        ),
+    )
+    if pendente and forcar:
+        fechar_pipeline_pendente(
+            db,
+            rid,
+            obs or 'Correcao administrativa forcada fora do pipeline',
+            responsavel,
+        )
     db.commit()
-    return jsonify({'status': novo_status})
+    return jsonify({'status': novo_status, 'forcado': bool(pendente and forcar)})
 
 
 @app.route('/api/residentes/<int:rid>/acao', methods=['POST'])
@@ -2395,15 +2541,33 @@ def api_pipeline_fila():
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
-               pa.reagendado_para,
+               pa.reagendado_para, pa.prazo_em, pa.prioridade, pa.bloqueado,
+               pa.bloqueio_motivo, pa.atribuido_a, pa.atualizado_em,
                r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
-               r.email, r.valor, r.comprovante_pagamento,
+               r.email, r.valor, r.status_pagamento, r.comprovante_pagamento,
                r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
-               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado,
+               CASE WHEN pa.prazo_em IS NULL THEN NULL
+                    ELSE CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)
+               END as dias_atraso,
+               (
+                 CASE pa.prioridade WHEN 2 THEN 1000 WHEN 1 THEN 300 ELSE 0 END
+                 + CASE
+                     WHEN pa.prazo_em IS NOT NULL AND date(pa.prazo_em) < date('now')
+                       THEN 500 + MIN(90, CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)) * 5
+                     WHEN pa.prazo_em IS NOT NULL AND date(pa.prazo_em) = date('now')
+                       THEN 250
+                     ELSE 0
+                   END
+                 + CASE WHEN pa.bloqueado=1 THEN 150 ELSE 0 END
+               ) as prioridade_score
         FROM pipeline_acoes pa
         JOIN residentes r ON r.id = pa.residente_id
         WHERE pa.situacao = 'pendente'
-        ORDER BY dias_parado DESC, pa.criado_em ASC
+        ORDER BY prioridade_score DESC,
+                 CASE WHEN pa.prazo_em IS NULL THEN 1 ELSE 0 END,
+                 pa.prazo_em ASC,
+                 pa.criado_em ASC
     ''').fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -2414,17 +2578,88 @@ def api_pipeline_fila_etapa(etapa):
     db = get_db()
     rows = db.execute('''
         SELECT pa.id as acao_id, pa.residente_id, pa.etapa, pa.acao_tipo, pa.criado_em,
-               pa.reagendado_para,
+               pa.reagendado_para, pa.prazo_em, pa.prioridade, pa.bloqueado,
+               pa.bloqueio_motivo, pa.atribuido_a, pa.atualizado_em,
                r.nome, r.especialidade, r.tipo, r.modalidade, r.status, r.telefone,
-               r.email, r.valor, r.comprovante_pagamento,
+               r.email, r.valor, r.status_pagamento, r.comprovante_pagamento,
                r.inicio, r.termino, r.periodo_desejado, r.mes_desejado, r.mes_ano,
-               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado
+               CAST(julianday('now') - julianday(pa.criado_em) AS INTEGER) as dias_parado,
+               CASE WHEN pa.prazo_em IS NULL THEN NULL
+                    ELSE CAST(julianday('now') - julianday(pa.prazo_em) AS INTEGER)
+               END as dias_atraso
         FROM pipeline_acoes pa
         JOIN residentes r ON r.id = pa.residente_id
         WHERE pa.situacao = 'pendente' AND pa.etapa = ?
-        ORDER BY dias_parado DESC, pa.criado_em ASC
+        ORDER BY pa.prioridade DESC,
+                 CASE WHEN pa.prazo_em IS NULL THEN 1 ELSE 0 END,
+                 pa.prazo_em ASC,
+                 pa.criado_em ASC
     ''', (etapa,)).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/pipeline/acoes/<int:acao_id>', methods=['PUT'])
+@login_required
+def api_pipeline_atualizar_acao(acao_id):
+    db = get_db()
+    acao = db.execute(
+        "SELECT * FROM pipeline_acoes WHERE id=? AND situacao='pendente'",
+        (acao_id,),
+    ).fetchone()
+    if not acao:
+        return jsonify({'erro': 'Acao pendente nao encontrada'}), 404
+
+    d = request.get_json() or {}
+
+    try:
+        prioridade = int(d.get('prioridade', acao['prioridade'] or 0))
+    except (TypeError, ValueError):
+        return jsonify({'erro': 'Prioridade invalida'}), 400
+    if prioridade not in (0, 1, 2):
+        return jsonify({'erro': 'Prioridade deve ser 0, 1 ou 2'}), 400
+
+    prazo_em = d.get('prazo_em', acao['prazo_em'])
+    if prazo_em == '':
+        prazo_em = None
+    if prazo_em:
+        try:
+            datetime.strptime(str(prazo_em), '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'erro': 'Prazo deve estar no formato AAAA-MM-DD'}), 400
+
+    bloqueado = 1 if d.get('bloqueado', bool(acao['bloqueado'])) else 0
+    if 'bloqueio_motivo' in d:
+        bloqueio_motivo = (d.get('bloqueio_motivo') or '').strip() or None
+    else:
+        bloqueio_motivo = acao['bloqueio_motivo']
+    if bloqueado and not bloqueio_motivo:
+        return jsonify({'erro': 'Informe o motivo do bloqueio'}), 400
+    if not bloqueado:
+        bloqueio_motivo = None
+
+    atribuido_a = acao['atribuido_a']
+    if d.get('assumir'):
+        atribuido_a = current_user.nome
+    elif d.get('liberar_responsavel'):
+        atribuido_a = None
+
+    db.execute(
+        """UPDATE pipeline_acoes
+           SET prioridade=?, prazo_em=?, bloqueado=?, bloqueio_motivo=?,
+               atribuido_a=?, atualizado_em=CURRENT_TIMESTAMP
+           WHERE id=? AND situacao='pendente'""",
+        (prioridade, prazo_em, bloqueado, bloqueio_motivo, atribuido_a, acao_id),
+    )
+    db.commit()
+
+    updated = db.execute(
+        """SELECT id as acao_id, residente_id, etapa, acao_tipo, situacao,
+                  reagendado_para, prazo_em, prioridade, bloqueado,
+                  bloqueio_motivo, atribuido_a, criado_em, atualizado_em
+           FROM pipeline_acoes WHERE id=?""",
+        (acao_id,),
+    ).fetchone()
+    return jsonify(dict(updated))
 
 
 @app.route('/api/pipeline/residente/<int:rid>', methods=['GET'])
@@ -2446,15 +2681,39 @@ def api_pipeline_dashboard():
         FROM pipeline_acoes WHERE situacao='pendente'
         GROUP BY etapa
     ''').fetchall()
-    criticos = db.execute('''
-        SELECT COUNT(*) as total FROM pipeline_acoes
+
+    resumo = db.execute('''
+        SELECT
+            COUNT(*) as pendentes_total,
+            COUNT(*) FILTER (
+                WHERE prazo_em IS NOT NULL AND date(prazo_em) < date('now')
+            ) as atrasados,
+            COUNT(*) FILTER (
+                WHERE prazo_em IS NOT NULL AND date(prazo_em) = date('now')
+            ) as vencem_hoje,
+            COUNT(*) FILTER (WHERE bloqueado=1) as bloqueados,
+            COUNT(*) FILTER (WHERE atribuido_a IS NULL OR trim(atribuido_a)='') as sem_responsavel,
+            COUNT(*) FILTER (
+                WHERE prioridade=2
+                   OR (prazo_em IS NOT NULL
+                       AND CAST(julianday('now') - julianday(prazo_em) AS INTEGER) >= 3)
+            ) as criticos
+        FROM pipeline_acoes
         WHERE situacao='pendente'
-          AND CAST(julianday('now') - julianday(criado_em) AS INTEGER) > 14
-    ''').fetchone()['total']
-    feitos = db.execute("SELECT COUNT(*) as total FROM pipeline_acoes WHERE situacao='feita'").fetchone()['total']
+    ''').fetchone()
+
+    feitos = db.execute(
+        "SELECT COUNT(*) as total FROM pipeline_acoes WHERE situacao='feita'"
+    ).fetchone()['total']
+
     return jsonify({
         'pendentes_por_etapa': {str(r['etapa']): r['total'] for r in pendentes_por_etapa},
-        'criticos': criticos,
+        'pendentes_total': resumo['pendentes_total'] or 0,
+        'atrasados': resumo['atrasados'] or 0,
+        'vencem_hoje': resumo['vencem_hoje'] or 0,
+        'bloqueados': resumo['bloqueados'] or 0,
+        'sem_responsavel': resumo['sem_responsavel'] or 0,
+        'criticos': resumo['criticos'] or 0,
         'feitos': feitos,
     })
 

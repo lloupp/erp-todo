@@ -176,7 +176,13 @@ const PIPELINE_ETAPAS_INFO = {
              { resultado: 'falta_documento', label: 'Falta documento', classe: 'btn-secondary' },
          ] },
     8: { titulo: 'Orientações para o 1º dia', tipoMensagem: 'orientacoes',
-         resultados: [{ resultado: 'enviado', label: 'Enviar orientações', classe: 'btn-primary' }] },
+         resultados: [{ resultado: 'enviado', label: 'Orientações enviadas', classe: 'btn-primary' }] },
+    9: { titulo: 'Concluir estágio',
+         resultados: [
+             { resultado: 'concluido', label: 'Estágio concluído', classe: 'btn-primary' },
+             { resultado: 'nao_veio', label: 'Não compareceu', classe: 'btn-secondary' },
+             { resultado: 'cancelado', label: 'Cancelado', classe: 'btn-danger' },
+         ] },
 };
 
 const INPUT_STYLE = 'width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;';
@@ -197,43 +203,61 @@ async function carregarPipelineFila() {
     const painel = document.getElementById('pipeline-fila-panel');
     if (!painel) return;
     try {
-        const fila = await apiFetch('/api/pipeline/fila');
+        const [fila, resumo] = await Promise.all([
+            apiFetch('/api/pipeline/fila'),
+            apiFetch('/api/pipeline/dashboard'),
+        ]);
         if (!fila.length) { painel.style.display = 'none'; return; }
         painel.style.display = 'block';
+
+        const prioridadeLabel = p => p === 2 ? 'URGENTE' : p === 1 ? 'ALTA' : 'NORMAL';
+        const prioridadeBg = p => p === 2 ? '#fee2e2' : p === 1 ? '#fef3c7' : '#f3f4f6';
+        const prioridadeColor = p => p === 2 ? '#991b1b' : p === 1 ? '#92400e' : '#4b5563';
+
         const lista = document.getElementById('pipeline-fila-lista');
-        lista.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
-            <thead><tr style="text-align:left;">
-                <th style="padding:6px;">Residente</th><th>Especialidade</th><th>Etapa</th><th>Parado há</th><th></th>
-            </tr></thead>
-            <tbody>${fila.map(a => {
-                const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
-                let alerta = a.dias_parado > 14 ? 'color:#dc2626;font-weight:600;'
-                    : a.dias_parado > 7 ? 'color:#f59e0b;font-weight:600;' : '';
-                let coluna = `${a.dias_parado}d`;
-                if (a.etapa === 8) {
-                    if (a.reagendado_para) {
-                        const hoje = new Date().toISOString().slice(0, 10);
-                        if (a.reagendado_para <= hoje) {
-                            coluna = 'Enviar hoje!';
-                            alerta = 'color:#dc2626;font-weight:600;';
-                        } else {
-                            coluna = `agendado ${formatarDataBR(a.reagendado_para)}`;
-                            alerta = '';
-                        }
-                    } else {
-                        coluna = 'sem data (fila manual)';
-                        alerta = '';
-                    }
-                }
-                return `<tr style="border-top:1px solid var(--color-border);">
-                    <td style="padding:6px;">${esc(a.nome)}</td>
-                    <td>${esc(a.especialidade || '—')}</td>
-                    <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
-                    <td style="${alerta}">${coluna}</td>
-                    <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Ação</button></td>
-                </tr>`;
-            }).join('')}</tbody>
-        </table>`;
+        lista.innerHTML = `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                <span class="welcome-chip">${resumo.pendentes_total || 0} pendente(s)</span>
+                <span class="welcome-chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;">${resumo.atrasados || 0} atrasado(s)</span>
+                <span class="welcome-chip" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">${resumo.vencem_hoje || 0} vence(m) hoje</span>
+                <span class="welcome-chip" style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;">${resumo.bloqueados || 0} bloqueado(s)</span>
+                <span class="welcome-chip" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;">${resumo.sem_responsavel || 0} sem responsável</span>
+            </div>
+            <table style="width:100%;font-size:13px;border-collapse:collapse;min-width:900px;">
+                <thead><tr style="text-align:left;">
+                    <th style="padding:6px;">Prioridade</th>
+                    <th>Residente</th>
+                    <th>Próxima ação</th>
+                    <th>Prazo</th>
+                    <th>Responsável</th>
+                    <th>Situação</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>${fila.map(a => {
+                    const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
+                    const atrasado = a.dias_atraso != null && a.dias_atraso > 0;
+                    const venceHoje = a.dias_atraso === 0;
+                    const prazo = a.prazo_em
+                        ? `${formatarDataBR(a.prazo_em)}${atrasado ? ` · ${a.dias_atraso}d atrasado` : venceHoje ? ' · hoje' : ''}`
+                        : 'Sem prazo';
+                    const situacao = a.bloqueado
+                        ? `<span style="color:#b91c1c;font-weight:600;" title="${esc(a.bloqueio_motivo || '')}">Bloqueado</span>`
+                        : atrasado
+                            ? '<span style="color:#b91c1c;font-weight:600;">Atrasado</span>'
+                            : '<span style="color:#059669;">Em andamento</span>';
+                    return `<tr style="border-top:1px solid var(--color-border);">
+                        <td style="padding:6px;">
+                            <span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:${prioridadeBg(a.prioridade)};color:${prioridadeColor(a.prioridade)};">${prioridadeLabel(a.prioridade)}</span>
+                        </td>
+                        <td><strong>${esc(a.nome)}</strong><br><small style="color:var(--color-text-secondary);">${esc(a.especialidade || '—')}</small></td>
+                        <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
+                        <td style="${atrasado ? 'color:#b91c1c;font-weight:600;' : ''}">${prazo}</td>
+                        <td>${esc(a.atribuido_a || 'Não atribuído')}</td>
+                        <td>${situacao}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Abrir</button></td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
     } catch (_) {
         painel.style.display = 'none';
     }
@@ -242,13 +266,26 @@ async function carregarPipelineFila() {
 async function abrirModalPipelineAcao(a) {
     const info = PIPELINE_ETAPAS_INFO[a.etapa];
     if (!info) return;
-    pipelineAcaoAtual = { residente: a, etapa: a.etapa, telefoneDestino: a.telefone, emailDestino: a.email || null };
+    pipelineAcaoAtual = {
+        residente: a,
+        etapa: a.etapa,
+        acaoId: a.acao_id,
+        telefoneDestino: a.telefone,
+        emailDestino: a.email || null,
+    };
 
     document.getElementById('pa-titulo').textContent = `Etapa ${a.etapa} — ${info.titulo}`;
     document.getElementById('pa-residente-nome').textContent = `${a.nome} (${a.tipo})`;
     document.getElementById('pa-residente-info').textContent =
         `${a.especialidade || '—'} · parado há ${a.dias_parado} dia(s)`;
     document.getElementById('pa-observacao').value = '';
+    document.getElementById('pa-prioridade').value = String(a.prioridade || 0);
+    document.getElementById('pa-prazo').value = a.prazo_em || '';
+    document.getElementById('pa-bloqueado').checked = Boolean(a.bloqueado);
+    document.getElementById('pa-bloqueio-motivo').value = a.bloqueio_motivo || '';
+    document.getElementById('pa-responsavel-atual').textContent =
+        a.atribuido_a ? `Responsável: ${a.atribuido_a}` : 'Sem responsável';
+    toggleMotivoBloqueioPipeline();
 
     const extra = document.getElementById('pa-extra-campos');
     extra.innerHTML = '';
@@ -347,7 +384,7 @@ async function abrirModalPipelineAcao(a) {
     const botoes = document.getElementById('pa-botoes');
     botoes.innerHTML = '<button class="btn btn-ghost" onclick="fecharModal(\'modal-pipeline-acao\')">Cancelar</button>' +
         info.resultados.map(r =>
-            `<button class="btn ${r.classe}" onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
+            `<button class="btn ${r.classe}" ${a.bloqueado ? 'disabled title="Desbloqueie a ação antes de concluir"' : ''} onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
         ).join('');
 
     abrirModal('modal-pipeline-acao');
@@ -448,6 +485,49 @@ async function enviarOutlookPipeline() {
     } finally {
         atualizarCanaisPipelineAcao();
     }
+}
+
+function toggleMotivoBloqueioPipeline() {
+    const marcado = document.getElementById('pa-bloqueado').checked;
+    const motivo = document.getElementById('pa-bloqueio-motivo');
+    motivo.style.display = marcado ? 'block' : 'none';
+}
+
+async function salvarGestaoPipeline() {
+    if (!pipelineAcaoAtual) return;
+    const bloqueado = document.getElementById('pa-bloqueado').checked;
+    const motivo = document.getElementById('pa-bloqueio-motivo').value.trim();
+    if (bloqueado && !motivo) {
+        showToast('Informe o motivo do bloqueio.', 'error');
+        return;
+    }
+    try {
+        await apiFetch(`/api/pipeline/acoes/${pipelineAcaoAtual.acaoId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                prioridade: Number(document.getElementById('pa-prioridade').value),
+                prazo_em: document.getElementById('pa-prazo').value || null,
+                bloqueado,
+                bloqueio_motivo: motivo || null,
+            }),
+        });
+        fecharModal('modal-pipeline-acao');
+        showToast('Gestão da ação atualizada.', 'success');
+        carregarPipelineFila();
+    } catch (_) {}
+}
+
+async function assumirAcaoPipeline() {
+    if (!pipelineAcaoAtual) return;
+    try {
+        await apiFetch(`/api/pipeline/acoes/${pipelineAcaoAtual.acaoId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ assumir: true }),
+        });
+        fecharModal('modal-pipeline-acao');
+        showToast('Ação atribuída a você.', 'success');
+        carregarPipelineFila();
+    } catch (_) {}
 }
 
 async function executarAcaoPipeline(resultado) {
@@ -798,7 +878,6 @@ function renderTabela(rows) {
                 <button class="btn btn-sm btn-area-medica" onclick="abrirModalAreaMedica(${r.id})" title="Falar com a Área Médica (chefe de serviço)">&#127973;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirAcademico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Acompanhamento acadêmico">&#127891;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirHistorico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Historico">&#9776;</button>
-                ${proximoStatus(r.status) ? `<button class="btn btn-sm btn-primary" onclick="abrirModalAvancar(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}','${esc(r.status)}')" title="Avançar status">&#9654;</button>` : ''}
                 <button class="btn btn-sm btn-ghost" onclick="abrirModalEditar(${r.id})" title="Editar">&#9998;</button>
                 <a class="btn btn-sm btn-ghost" href="/api/residentes/${r.id}/pdf" target="_blank" title="Gerar PDF da ficha">&#128196;</a>
                 <button class="btn btn-sm btn-danger" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">&#128465;</button>

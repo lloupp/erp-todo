@@ -341,6 +341,34 @@
                     <strong id="pa-residente-nome"></strong>
                     <br><small style="color:var(--color-text-secondary);" id="pa-residente-info"></small>
                 </div>
+
+                <div style="border:1px solid var(--color-border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <strong style="font-size:13px;">Gestão da próxima ação</strong>
+                        <span id="pa-responsavel-atual" style="font-size:12px;color:var(--color-text-secondary);"></span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <label style="font-size:12px;">Prioridade
+                            <select id="pa-prioridade" style="width:100%;height:34px;margin-top:4px;">
+                                <option value="0">Normal</option>
+                                <option value="1">Alta</option>
+                                <option value="2">Urgente</option>
+                            </select>
+                        </label>
+                        <label style="font-size:12px;">Prazo
+                            <input id="pa-prazo" type="date" style="width:100%;height:34px;margin-top:4px;">
+                        </label>
+                    </div>
+                    <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
+                        <input id="pa-bloqueado" type="checkbox" onchange="toggleMotivoBloqueioPipeline()"> Ação bloqueada
+                    </label>
+                    <input id="pa-bloqueio-motivo" type="text" placeholder="Motivo do bloqueio" style="width:100%;height:34px;display:none;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-secondary" type="button" onclick="salvarGestaoPipeline()">Salvar gestão</button>
+                        <button class="btn btn-sm btn-ghost" type="button" onclick="assumirAcaoPipeline()">Assumir para mim</button>
+                    </div>
+                </div>
+
                 <div id="pa-extra-campos" style="display:flex;flex-direction:column;gap:10px;"></div>
                 <label id="pa-mensagem-label" style="display:none;">Mensagem (editável)
                     <textarea id="pa-mensagem" rows="5" oninput="atualizarCanaisPipelineAcao()" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;"></textarea>

@@ -76,22 +76,27 @@ def _backfill_pipeline(db: sqlite3.Connection, pipeline_etapas: dict[int, str]) 
             SELECT 1 FROM pipeline_acoes pa WHERE pa.residente_id = r.id
         )
     ''').fetchall()
+    sla = {1: 1, 2: 3, 3: 7, 4: 7, 5: 2, 6: 2, 7: 7}
     for residente_id, status, inicio in rows:
         etapa = PIPELINE_STAGE_BY_STATUS.get(status)
         if not etapa or etapa not in pipeline_etapas:
             continue
         reagendado_para = None
+        prazo_em = None
         if etapa == 8 and inicio:
             try:
                 target = datetime.strptime(str(inicio)[:10], '%Y-%m-%d') - timedelta(days=7)
                 reagendado_para = target.strftime('%Y-%m-%d')
+                prazo_em = reagendado_para
             except ValueError:
                 pass
+        elif etapa in sla:
+            prazo_em = (datetime.now() + timedelta(days=sla[etapa])).strftime('%Y-%m-%d')
         db.execute(
             '''INSERT INTO pipeline_acoes
-               (residente_id, etapa, acao_tipo, situacao, reagendado_para)
-               VALUES (?, ?, ?, 'pendente', ?)''',
-            (residente_id, etapa, pipeline_etapas[etapa], reagendado_para),
+               (residente_id, etapa, acao_tipo, situacao, reagendado_para, prazo_em)
+               VALUES (?, ?, ?, 'pendente', ?, ?)''',
+            (residente_id, etapa, pipeline_etapas[etapa], reagendado_para, prazo_em),
         )
 
 
@@ -250,6 +255,12 @@ def ensure_database(
                 responsavel TEXT,
                 observacao TEXT,
                 reagendado_para DATE,
+                prazo_em DATE,
+                prioridade INTEGER NOT NULL DEFAULT 0,
+                bloqueado INTEGER NOT NULL DEFAULT 0,
+                bloqueio_motivo TEXT,
+                atribuido_a TEXT,
+                atualizado_em DATETIME,
                 criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
                 concluido_em DATETIME
             );
@@ -316,6 +327,43 @@ def ensure_database(
             ('origem', 'TEXT'),
             ('origem_ref', 'TEXT'),
         ])
+
+        _add_missing_columns(db, 'pipeline_acoes', [
+            ('prazo_em', 'DATE'),
+            ('prioridade', 'INTEGER NOT NULL DEFAULT 0'),
+            ('bloqueado', 'INTEGER NOT NULL DEFAULT 0'),
+            ('bloqueio_motivo', 'TEXT'),
+            ('atribuido_a', 'TEXT'),
+            ('atualizado_em', 'DATETIME'),
+        ])
+
+        db.execute(
+            """CREATE INDEX IF NOT EXISTS idx_pipeline_acoes_prazo
+               ON pipeline_acoes(situacao, prazo_em, prioridade)"""
+        )
+
+        # Backfill de prazo apenas para a acao pendente atual. Nao altera
+        # historico concluido e respeita datas operacionais das etapas 8/9.
+        db.execute("""
+            UPDATE pipeline_acoes
+            SET prazo_em = CASE
+                WHEN etapa = 8 THEN COALESCE(
+                    reagendado_para,
+                    (SELECT date(r.inicio, '-7 days') FROM residentes r
+                     WHERE r.id = pipeline_acoes.residente_id)
+                )
+                WHEN etapa = 9 THEN (
+                    SELECT date(r.termino) FROM residentes r
+                    WHERE r.id = pipeline_acoes.residente_id
+                )
+                WHEN etapa = 1 THEN date(criado_em, '+1 day')
+                WHEN etapa = 2 THEN date(criado_em, '+3 days')
+                WHEN etapa IN (3,4,7) THEN date(criado_em, '+7 days')
+                WHEN etapa IN (5,6) THEN date(criado_em, '+2 days')
+                ELSE NULL
+            END
+            WHERE situacao = 'pendente' AND prazo_em IS NULL
+        """)
 
         db.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_residentes_origem_ref
