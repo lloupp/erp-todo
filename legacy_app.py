@@ -2260,51 +2260,90 @@ def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
 
 
 def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
-    """Marca a acao pendente da etapa atual como feita/pulada, muda o status do
-    residente se aplicavel (com registro em historico_residentes) e cria a
-    proxima acao pendente. Nunca envia mensagem nem dispara nada sozinho."""
+    """Conclui a acao atual, valida bloqueios/requisitos e cria a proxima."""
     transicoes = PIPELINE_TRANSICOES.get(etapa_atual, {})
     if resultado not in transicoes:
         raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
+
+    acao = db.execute(
+        """SELECT * FROM pipeline_acoes
+           WHERE residente_id=? AND etapa=? AND situacao='pendente'""",
+        (residente_id, etapa_atual),
+    ).fetchone()
+    if not acao:
+        raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
+    if acao['bloqueado']:
+        motivo = acao['bloqueio_motivo'] or 'sem motivo informado'
+        raise ValueError(f'Acao bloqueada: {motivo}')
+
+    residente = db.execute(
+        """SELECT status, status_pagamento, inicio, termino
+           FROM residentes WHERE id=?""",
+        (residente_id,),
+    ).fetchone()
+    if not residente:
+        raise ValueError('Residente nao encontrado')
+
+    # Guardas de negocio: impedem que o pipeline "pule" requisitos objetivos.
+    if etapa_atual == 7 and resultado == 'comprovante_ok':
+        if residente['status_pagamento'] not in ('Pago', 'Isento'):
+            raise ValueError(
+                'Pagamento ainda nao esta confirmado. Marque como Pago ou Isento antes de confirmar a etapa 7.'
+            )
+
+    if etapa_atual == 8 and resultado == 'enviado':
+        if not residente['inicio'] or not residente['termino']:
+            raise ValueError(
+                'Preencha as datas de inicio e termino antes de concluir o envio das orientacoes.'
+            )
+
+    if etapa_atual == 9 and resultado == 'concluido':
+        if not residente['termino']:
+            raise ValueError('Data de termino obrigatoria para concluir o estagio.')
+        try:
+            termino = datetime.strptime(str(residente['termino'])[:10], '%Y-%m-%d').date()
+        except ValueError as exc:
+            raise ValueError('Data de termino invalida.') from exc
+        if termino > datetime.now().date():
+            raise ValueError(
+                f'O estagio termina em {termino.strftime("%d/%m/%Y")}; ainda nao pode ser marcado como concluido.'
+            )
+
     novo_status, proxima_etapa = transicoes[resultado]
     situacao_acao = 'pulado' if resultado in RESULTADOS_PULADOS else 'feita'
-    # Sem observacao explicita, grava o proprio resultado -- e o que distingue,
-    # por exemplo, 'comprovante_ok' de 'falta_documento' na etapa 7 quando essa
-    # acao aparece depois no historico combinado do residente.
     obs_pipeline = observacao or resultado
 
-    cur = db.execute('''
-        UPDATE pipeline_acoes SET situacao=?, responsavel=?, observacao=?, concluido_em=CURRENT_TIMESTAMP
-        WHERE residente_id=? AND etapa=? AND situacao='pendente'
-    ''', (situacao_acao, responsavel, obs_pipeline, residente_id, etapa_atual))
+    cur = db.execute(
+        """UPDATE pipeline_acoes
+           SET situacao=?, responsavel=?, observacao=?,
+               concluido_em=CURRENT_TIMESTAMP, atualizado_em=CURRENT_TIMESTAMP
+           WHERE id=? AND situacao='pendente'""",
+        (situacao_acao, responsavel, obs_pipeline, acao['id']),
+    )
     if cur.rowcount == 0:
-        raise ValueError(f'Nao ha acao pendente na etapa {etapa_atual} para este residente')
+        raise ValueError('A acao pendente mudou antes da confirmacao. Atualize a fila e tente novamente.')
 
     if novo_status:
-        db.execute('UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-                   (novo_status, residente_id))
         db.execute(
-            'INSERT INTO historico_residentes (residente_id, status, observacao, responsavel) VALUES (?,?,?,?)',
-            (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel)
+            'UPDATE residentes SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            (novo_status, residente_id),
+        )
+        db.execute(
+            """INSERT INTO historico_residentes
+               (residente_id, status, observacao, responsavel)
+               VALUES (?,?,?,?)""",
+            (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel),
         )
 
     if proxima_etapa:
-        reagendado_para = None
-        if proxima_etapa == 8:
-            # Etapa 8 (orientacoes 1o dia) so entra na fila com destaque em
-            # T = inicio - 7 dias; sem 'inicio' preenchido, fica pendente sem
-            # data-alvo (cai na fila manual, ver PIPELINE.md passo 8).
-            row = db.execute('SELECT inicio FROM residentes WHERE id=?', (residente_id,)).fetchone()
-            if row and row['inicio']:
-                try:
-                    dt = datetime.strptime(str(row['inicio'])[:10], '%Y-%m-%d') - timedelta(days=7)
-                    reagendado_para = dt.strftime('%Y-%m-%d')
-                except ValueError:
-                    reagendado_para = None
-        criar_acao_pipeline(db, residente_id, proxima_etapa, reagendado_para)
+        criar_acao_pipeline(db, residente_id, proxima_etapa)
 
     db.commit()
-    return {'novo_status': novo_status, 'proxima_etapa': proxima_etapa}
+    return {
+        'novo_status': novo_status,
+        'proxima_etapa': proxima_etapa,
+        'acao_concluida': acao['id'],
+    }
 
 
 @app.route('/api/residentes', methods=['POST'])
