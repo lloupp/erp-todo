@@ -76,22 +76,27 @@ def _backfill_pipeline(db: sqlite3.Connection, pipeline_etapas: dict[int, str]) 
             SELECT 1 FROM pipeline_acoes pa WHERE pa.residente_id = r.id
         )
     ''').fetchall()
+    sla = {1: 1, 2: 3, 3: 7, 4: 7, 5: 2, 6: 2, 7: 7}
     for residente_id, status, inicio in rows:
         etapa = PIPELINE_STAGE_BY_STATUS.get(status)
         if not etapa or etapa not in pipeline_etapas:
             continue
         reagendado_para = None
+        prazo_em = None
         if etapa == 8 and inicio:
             try:
                 target = datetime.strptime(str(inicio)[:10], '%Y-%m-%d') - timedelta(days=7)
                 reagendado_para = target.strftime('%Y-%m-%d')
+                prazo_em = reagendado_para
             except ValueError:
                 pass
+        elif etapa in sla:
+            prazo_em = (datetime.now() + timedelta(days=sla[etapa])).strftime('%Y-%m-%d')
         db.execute(
             '''INSERT INTO pipeline_acoes
-               (residente_id, etapa, acao_tipo, situacao, reagendado_para)
-               VALUES (?, ?, ?, 'pendente', ?)''',
-            (residente_id, etapa, pipeline_etapas[etapa], reagendado_para),
+               (residente_id, etapa, acao_tipo, situacao, reagendado_para, prazo_em)
+               VALUES (?, ?, ?, 'pendente', ?, ?)''',
+            (residente_id, etapa, pipeline_etapas[etapa], reagendado_para, prazo_em),
         )
 
 
