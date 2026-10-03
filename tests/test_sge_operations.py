@@ -54,3 +54,52 @@ class SgeOperationsTests(unittest.TestCase):
         with sqlite3.connect(self.db_path) as db:
             with self.assertRaises(sqlite3.IntegrityError):
                 db.execute("INSERT INTO pipeline_acoes(residente_id,etapa,acao_tipo,situacao) VALUES (?,1,'triagem','pendente')",(rid,))
+
+    def test_capacity_counts_legacy_and_override(self):
+        self.login_admin()
+        tomorrow = (date.today()+timedelta(days=1)).isoformat()
+        end = (date.today()+timedelta(days=20)).isoformat()
+        p = self.client.post('/api/sge/vagas', json={'especialidade':'Neurologia','modalidade':'Optativo',
+            'inicio':tomorrow,'termino':end,'capacidade':1})
+        self.assertEqual(p.status_code,201,p.get_data(as_text=True))
+        pid = p.get_json()['id']
+        a = self.create(especialidade='Neurologia',inicio=tomorrow,termino=end,status='Confirmado')
+        p = next(p for p in self.client.get('/api/sge/vagas').get_json() if p['id']==pid)
+        self.assertEqual((p['ocupadas'],p['disponiveis'],p['situacao']),(1,0,'Lotado'))
+        data={'nome':'Segundo','especialidade':'Neurologia','mes_ano':tomorrow[:7],
+            'inicio':tomorrow,'termino':end,'status':'Confirmado'}
+        self.assertEqual(self.client.post('/api/residentes',json=data).status_code,409)
+        data.update(override_capacidade=True,motivo_capacidade='Autorizacao excepcional da coordenacao')
+        self.assertEqual(self.client.post('/api/residentes',json=data).status_code,201)
+        p = next(p for p in self.client.get('/api/sge/vagas').get_json() if p['id']==pid)
+        self.assertEqual(p['excedentes'],1)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM sge_auditoria WHERE acao='override_capacidade'").fetchone()[0],1)
+        self.assertEqual(self.client.put(f'/api/sge/vagas/{pid}',json={'capacidade':0}).status_code,409)
+        # Date changes cannot silently move a confirmed record outside configured capacity.
+        self.assertEqual(self.client.put(f'/api/residentes/{a}',json={'termino':'2050-01-01'}).status_code,409)
+        self.module.bootstrap_database()
+        self.module.bootstrap_database()
+        p = next(p for p in self.client.get('/api/sge/vagas').get_json() if p['id']==pid)
+        self.assertEqual(p['ocupadas'],2)
+
+    def test_last_place_concurrent_pipeline_confirmations(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.login_admin()
+        start, end = '2026-10-10', '2026-10-20'
+        p=self.client.post('/api/sge/vagas',json={'especialidade':'Neurocirurgia','modalidade':'Optativo',
+            'inicio':start,'termino':end,'capacidade':1})
+        self.assertEqual(p.status_code,201)
+        ids=[self.create(especialidade='Neurocirurgia',inicio=start,termino=end,status_pagamento='Pago') for _ in range(2)]
+        with sqlite3.connect(self.db_path) as db:
+            for rid in ids:
+                db.execute("UPDATE pipeline_acoes SET etapa=7,acao_tipo='analisar_comprovante' WHERE residente_id=?",(rid,))
+        def confirm(rid):
+            client=self.module.app.test_client()
+            client.post('/login',json={'username':'admin','password':'Strong-Test-Password-123!'},headers={'Accept':'application/json'})
+            return client.post(f'/api/residentes/{rid}/acao',json={'etapa':7,'resultado':'comprovante_ok'}).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses=list(pool.map(confirm,ids))
+        self.assertEqual(sorted(statuses),[200,409])
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM residentes WHERE especialidade='Neurocirurgia' AND status='Confirmado'").fetchone()[0],1)

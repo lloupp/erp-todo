@@ -28,6 +28,8 @@ class AppIntegrationTests(unittest.TestCase):
         cls.module = importlib.import_module('app')
         cls.module.app.config.update(TESTING=True, DATABASE=cls.db_path)
         cls.module.bootstrap_database()
+        with sqlite3.connect(cls.db_path) as db:
+            db.execute("INSERT INTO vagas_periodos(especialidade,especialidade_chave,modalidade,modalidade_chave,inicio,termino,capacidade) VALUES ('Cardiologia','cardiologia','Optativo','optativo','2020-01-01','2040-12-31',100)")
         cls.client = cls.module.app.test_client()
 
     @classmethod
@@ -194,6 +196,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.login_admin()
         created = self.client.post('/api/residentes', json={
             'nome': 'Aluno Academico',
+            'inicio': (date.today() - timedelta(days=10)).isoformat(),
             'termino': (date.today() - timedelta(days=1)).isoformat(),
             'especialidade': 'Cardiologia',
             'mes_ano': '2026-11',

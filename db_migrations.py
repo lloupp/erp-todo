@@ -124,6 +124,22 @@ def ensure_database(
                 applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS vagas_periodos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                especialidade TEXT NOT NULL,
+                especialidade_chave TEXT NOT NULL,
+                modalidade TEXT NOT NULL,
+                modalidade_chave TEXT NOT NULL,
+                inicio DATE NOT NULL,
+                termino DATE NOT NULL,
+                capacidade INTEGER NOT NULL CHECK(capacidade>=0),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                CHECK(termino>=inicio)
+            );
+            CREATE INDEX IF NOT EXISTS idx_vagas_periodos_consulta
+                ON vagas_periodos(especialidade_chave,modalidade_chave,inicio,termino);
+
             CREATE TABLE IF NOT EXISTS sge_auditoria (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 entidade TEXT NOT NULL,
@@ -385,6 +401,7 @@ def ensure_database(
             raise RuntimeError('Pipeline possui acoes pendentes duplicadas; revise os registros sem apagar historico.')
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_unica_pendente ON pipeline_acoes(residente_id) WHERE situacao='pendente'")
         db.execute("INSERT OR IGNORE INTO schema_migrations(name) VALUES ('sge_operational_guards_v1')")
+        db.execute("INSERT OR IGNORE INTO schema_migrations(name) VALUES ('sge_vagas_periodos_v1')")
         db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
         db.executemany(
             'INSERT OR IGNORE INTO tipo_estagio (id, nome) VALUES (?, ?)',

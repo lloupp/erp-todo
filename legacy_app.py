@@ -2261,7 +2261,8 @@ def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
 
 def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
     """Conclui a acao atual, valida bloqueios/requisitos e cria a proxima."""
-    db.execute("BEGIN IMMEDIATE")
+    if not db.in_transaction:
+        db.execute("BEGIN IMMEDIATE")
     transicoes = PIPELINE_TRANSICOES.get(etapa_atual, {})
     if resultado not in transicoes:
         raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
@@ -2381,10 +2382,10 @@ def api_create_residente():
 @login_required
 def api_update_residente(rid):
     db = get_db()
-    row = db.execute('SELECT status FROM residentes WHERE id=?', (rid,)).fetchone()
+    row = db.execute('SELECT * FROM residentes WHERE id=?', (rid,)).fetchone()
     if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
-    d = request.get_json()
+    d = {**dict(row), **(request.get_json() or {})}
     novo_status = d.get('status', row['status'])
     db.execute('''
         UPDATE residentes SET
