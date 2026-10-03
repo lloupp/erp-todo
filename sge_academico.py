@@ -9,11 +9,13 @@ from __future__ import annotations
 import math
 from datetime import date
 from sge_frequencia import horas_realizadas
+from sge_documentos import documentos_publicos
+from sge_common import data_iso, auditar, iniciar_escrita
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
 
-DOCUMENT_STATUSES = {"Pendente", "Recebido", "Aprovado", "Rejeitado"}
+DOCUMENT_STATUSES = {"Pendente", "Recebido", "Aprovado", "Rejeitado", "Expirado"}
 PAYMENT_OK = {"Pago", "Isento"}
 
 
@@ -58,7 +60,7 @@ def avaliar_certificado(residente, documentos):
     if not obrigatorios:
         motivos.append("Checklist de documentos obrigatorios nao configurado.")
     else:
-        pendentes = [d["nome"] for d in obrigatorios if d["status"] != "Aprovado"]
+        pendentes = [d["nome"] for d in obrigatorios if (d["status"] != "Aprovado" or not d.get("arquivo_id"))]
         if pendentes:
             motivos.append("Documentos obrigatorios pendentes: " + ", ".join(pendentes) + ".")
 
@@ -74,7 +76,7 @@ def avaliar_certificado(residente, documentos):
         "progresso_horas": progresso,
         "documentos_obrigatorios": len(obrigatorios),
         "documentos_obrigatorios_aprovados": sum(
-            1 for d in obrigatorios if d["status"] == "Aprovado"
+            1 for d in obrigatorios if d["status"] == "Aprovado" and d.get("arquivo_id")
         ),
         "certificado_emitido_em": residente["certificado_emitido_em"],
         "certificado_enviado_em": residente["certificado_enviado_em"],
@@ -91,14 +93,7 @@ def register_sge_academico(app, get_db):
         residente = db.execute("SELECT * FROM residentes WHERE id=?", (rid,)).fetchone()
         if not residente:
             return None, []
-        documentos = db.execute(
-            """SELECT id, residente_id, nome, obrigatorio, status, observacao,
-                      atualizado_por, updated_at
-               FROM residente_documentos
-               WHERE residente_id=?
-               ORDER BY obrigatorio DESC, nome COLLATE NOCASE""",
-            (rid,),
-        ).fetchall()
+        documentos = documentos_publicos(db,rid)
         residente = dict(residente)
         residente['carga_horaria_realizada'] = horas_realizadas(db,rid)
         return residente, documentos
@@ -172,7 +167,27 @@ def register_sge_academico(app, get_db):
         if status not in DOCUMENT_STATUSES:
             return jsonify({"erro": "Status de documento invalido"}), 400
 
+        iniciar_escrita(db)
         doc_id = data.get("id")
+        atual = db.execute('SELECT * FROM residente_documentos WHERE id=? AND residente_id=? AND arquivado_em IS NULL',(doc_id,rid)).fetchone() if doc_id else None
+        if doc_id and not atual:
+            return jsonify({'erro':'Documento nao encontrado.'}),404
+        validade = data.get('validade',atual['validade'] if atual else None) or None
+        try:
+            if validade:
+                validade = data_iso(validade,'validade')
+        except ValueError as exc:
+            return jsonify({'erro':str(exc)}),400
+        if status == 'Aprovado':
+            if current_user.role not in {'admin','coordenacao'}:
+                return jsonify({'erro':'Aprovacao exige coordenacao ou administrador.'}),403
+            if atual and data.get('arquivo_id') != atual['arquivo_id']:
+                return jsonify({'erro':'Arquivo mudou. Atualize e confira antes de aprovar.'}),409
+            if not atual or not atual['arquivo_id'] or (validade and validade<date.today().isoformat()):
+                return jsonify({'erro':'Anexe um arquivo valido antes de aprovar.'}),409
+        if not obrigatorio and current_user.role != 'admin':
+            return jsonify({'erro':'Dispensa de requisito exige administrador.'}),403
+        iniciar_escrita(db)
         if doc_id:
             cur = db.execute(
                 """UPDATE residente_documentos
@@ -196,6 +211,8 @@ def register_sge_academico(app, get_db):
                 if "UNIQUE constraint failed" in str(exc):
                     return jsonify({"erro": "Documento ja cadastrado para este aluno"}), 409
                 raise
+        db.execute("UPDATE residente_documentos SET validade=?,aprovado_em=CASE WHEN ?='Aprovado' THEN CURRENT_TIMESTAMP ELSE NULL END,aprovado_por=CASE WHEN ?='Aprovado' THEN ? ELSE NULL END WHERE id=?",(validade,status,status,atualizado_por,doc_id))
+        auditar(db,'residente_documentos',int(doc_id),'atualizar_checklist',{'status':status,'obrigatorio':obrigatorio,'validade':validade})
         db.commit()
         return jsonify({"id": int(doc_id), "ok": True})
 
@@ -203,10 +220,13 @@ def register_sge_academico(app, get_db):
     @login_required
     def api_delete_residente_documento(rid, doc_id):
         db = get_db()
-        cur = db.execute(
-            "DELETE FROM residente_documentos WHERE id=? AND residente_id=?",
-            (doc_id, rid),
-        )
+        if current_user.role != 'admin':
+            return jsonify({'erro':'Arquivamento exige administrador.'}),403
+        motivo=str((request.get_json(silent=True) or {}).get('motivo') or '').strip()
+        if not motivo:
+            return jsonify({'erro':'Justifique o arquivamento do requisito.'}),400
+        cur = db.execute('UPDATE residente_documentos SET arquivado_em=CURRENT_TIMESTAMP WHERE id=? AND residente_id=? AND arquivado_em IS NULL',(doc_id,rid))
+        auditar(db,'residente_documentos',doc_id,'arquivar',{'motivo':motivo})
         if cur.rowcount == 0:
             return jsonify({"erro": "Documento nao encontrado"}), 404
         db.commit()
@@ -216,6 +236,7 @@ def register_sge_academico(app, get_db):
     @login_required
     def api_registrar_certificado_residente(rid):
         db = get_db()
+        iniciar_escrita(db)
         residente, documentos = _residente_e_documentos(rid)
         if not residente:
             return jsonify({"erro": "Nao encontrado"}), 404
@@ -235,6 +256,8 @@ def register_sge_academico(app, get_db):
                 (rid,),
             )
         elif acao == "enviar":
+            if not avaliacao["apto"]:
+                return jsonify({"erro":"Gate academico bloqueado; revise antes de registrar envio."}),409
             if not residente["certificado_emitido_em"]:
                 return jsonify({"erro": "Registre a emissao do certificado antes do envio"}), 409
             db.execute(

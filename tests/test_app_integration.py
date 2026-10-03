@@ -1,3 +1,4 @@
+import io
 import importlib
 import os
 import sqlite3
@@ -56,6 +57,14 @@ class AppIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertTrue(response.get_json()['ok'])
+
+    def approve_document(self,rid):
+        response=self.client.post(f'/api/residentes/{rid}/documentos',json={'nome':'Identificacao','obrigatorio':True})
+        did=response.get_json()['id']
+        upload=self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'%PDF-1.4\nTest'),'identificacao.pdf')})
+        self.assertEqual(upload.status_code,201)
+        response=self.client.post(f'/api/residentes/{rid}/documentos',json={'id':did,'nome':'Identificacao','obrigatorio':True,'status':'Aprovado','arquivo_id':upload.get_json()['id']})
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
 
     def test_health_and_auth_boundary(self):
         self.assertEqual(self.client.get('/health').status_code, 200)
@@ -232,6 +241,10 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(document.status_code, 200, document.get_data(as_text=True))
         doc_id = document.get_json()['id']
 
+        upload = self.client.post(f'/api/residentes/{rid}/documentos/{doc_id}/arquivo',data={
+            'arquivo':(io.BytesIO(b'%PDF-1.4\nTest attachment'),'identificacao.pdf')})
+        self.assertEqual(upload.status_code,201,upload.get_data(as_text=True))
+
         blocked = self.client.post(f'/api/residentes/{rid}/certificado', json={'acao': 'emitir'})
         self.assertEqual(blocked.status_code, 409)
 
@@ -240,6 +253,7 @@ class AppIntegrationTests(unittest.TestCase):
             'nome': 'Documento de identificacao',
             'obrigatorio': True,
             'status': 'Aprovado',
+            'arquivo_id': upload.get_json()['id'],
             'observacao': 'Conferido',
         })
         self.assertEqual(approved.status_code, 200, approved.get_data(as_text=True))
@@ -500,6 +514,7 @@ class AppIntegrationTests(unittest.TestCase):
             )
             db.commit()
 
+        self.approve_document(rid)
         confirmed = self.client.post(
             f'/api/residentes/{rid}/acao',
             json={'etapa': 7, 'resultado': 'comprovante_ok'},
@@ -552,7 +567,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(finished.get_json()['novo_status'], 'Concluído')
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
 
 if __name__ == '__main__':
