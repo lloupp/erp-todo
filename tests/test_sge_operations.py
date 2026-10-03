@@ -103,3 +103,41 @@ class SgeOperationsTests(unittest.TestCase):
         self.assertEqual(sorted(statuses),[200,409])
         with sqlite3.connect(self.db_path) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM residentes WHERE especialidade='Neurocirurgia' AND status='Confirmado'").fetchone()[0],1)
+
+    def test_attendance_totals_corrections_and_certificate_source(self):
+        self.login_admin()
+        start=(date.today()-timedelta(days=10)).isoformat()
+        end=(date.today()-timedelta(days=1)).isoformat()
+        rid=self.create(inicio=start,termino=end)
+        r=self.client.put(f'/api/residentes/{rid}/academico',json={'carga_horaria_prevista':10})
+        self.assertEqual(r.status_code,200)
+        day=(date.today()-timedelta(days=2)).isoformat()
+        data={'data':day,'horas':8,'presenca':'Presente'}
+        r=self.client.post(f'/api/residentes/{rid}/frequencia',json=data)
+        self.assertEqual(r.status_code,201,r.get_data(as_text=True))
+        self.assertEqual((r.get_json()['realizadas'],r.get_json()['faltantes'],r.get_json()['percentual']),(8,2,80))
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json=data).status_code,409)
+        data.update(versao=1,horas=6)
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json=data).get_json()['realizadas'],6)
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json=data).status_code,409)
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json={'data':end,'horas':1,'presenca':'Ausente'}).status_code,400)
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json={'data':end,'horas':0,'presenca':'Ausência justificada'}).status_code,201)
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/academico',json={'carga_horaria_prevista':10,'carga_horaria_realizada':10}).status_code,409)
+        a=self.client.get(f'/api/residentes/{rid}/academico').get_json()
+        self.assertEqual(a['certificado']['carga_horaria_realizada'],6)
+        self.assertFalse(a['certificado']['apto'])
+        self.assertEqual(self.client.delete(f'/api/residentes/{rid}').status_code,409)
+
+    def test_legacy_hours_migration_preserves_total_once(self):
+        import tempfile
+        from pathlib import Path
+        from db_migrations import ensure_database
+        with tempfile.TemporaryDirectory() as tmp:
+            path=str(Path(tmp)/'legacy.db')
+            with sqlite3.connect(path) as db:
+                db.executescript("CREATE TABLE usuarios(id INTEGER PRIMARY KEY,username TEXT UNIQUE,password_hash TEXT,nome TEXT,role TEXT); INSERT INTO usuarios VALUES (1,'gestor','hash','Gestor','admin'); CREATE TABLE residentes(id INTEGER PRIMARY KEY,nome TEXT,especialidade TEXT,mes_ano TEXT,status TEXT,inicio TEXT,termino TEXT,created_at TEXT,updated_at TEXT,carga_horaria_realizada REAL); INSERT INTO residentes VALUES(1,'Aluno existente','Cardiologia','2026-09','Concluído','2026-09-01','2026-09-30',NULL,NULL,42);")
+            for _ in range(3):
+                ensure_database(path,hash_password=lambda p:p,message_seed=[],pipeline_etapas=self.module.PIPELINE_ETAPAS)
+            with sqlite3.connect(path) as db:
+                self.assertEqual(db.execute('SELECT SUM(horas),COUNT(*) FROM residente_frequencias WHERE residente_id=1').fetchone(),(42,1))
+                self.assertEqual(db.execute('SELECT carga_horaria_realizada FROM residentes WHERE id=1').fetchone()[0],42)

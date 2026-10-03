@@ -7,6 +7,8 @@ Certificate eligibility is derived from objective persisted requirements.
 from __future__ import annotations
 
 import math
+from datetime import date
+from sge_frequencia import horas_realizadas
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
@@ -36,6 +38,12 @@ def avaliar_certificado(residente, documentos):
 
     if residente["status_pagamento"] not in PAYMENT_OK:
         motivos.append("Pagamento ainda nao esta confirmado ou isento.")
+
+    try:
+        if date.fromisoformat(str(residente["termino"])) > date.today():
+            raise ValueError()
+    except (ValueError, TypeError):
+        motivos.append("Termino real do estagio nao informado ou ainda futuro.")
 
     prevista = float(residente["carga_horaria_prevista"] or 0)
     realizada = float(residente["carga_horaria_realizada"] or 0)
@@ -91,6 +99,8 @@ def register_sge_academico(app, get_db):
                ORDER BY obrigatorio DESC, nome COLLATE NOCASE""",
             (rid,),
         ).fetchall()
+        residente = dict(residente)
+        residente['carga_horaria_realizada'] = horas_realizadas(db,rid)
         return residente, documentos
 
     @app.route("/api/residentes/<int:rid>/academico", methods=["GET"])
@@ -127,12 +137,14 @@ def register_sge_academico(app, get_db):
         except ValueError as exc:
             return jsonify({"erro": str(exc)}), 400
 
+        if "carga_horaria_realizada" in data and realizada != horas_realizadas(db,rid):
+            return jsonify({"erro": "Horas realizadas sao calculadas pela frequencia diaria."}),409
         db.execute(
             """UPDATE residentes
-               SET carga_horaria_prevista=?, carga_horaria_realizada=?,
+               SET carga_horaria_prevista=?,
                    updated_at=CURRENT_TIMESTAMP
                WHERE id=?""",
-            (prevista, realizada, rid),
+            (prevista, rid),
         )
         db.commit()
         residente, documentos = _residente_e_documentos(rid)

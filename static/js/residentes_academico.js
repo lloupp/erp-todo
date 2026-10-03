@@ -5,6 +5,7 @@ let academicoResidenteId = null;
 
 async function abrirAcademico(id, nome) {
     academicoResidenteId = id;
+    document.getElementById("academico-operacional").href = `/sge/residentes/${id}`;
     document.getElementById('academico-titulo').textContent = 'Acompanhamento — ' + nome;
     document.getElementById('academico-conteudo').style.opacity = '.55';
     abrirModal('modal-academico');
@@ -20,6 +21,7 @@ async function carregarAcademico() {
             r.carga_horaria_prevista != null ? r.carga_horaria_prevista : '';
         document.getElementById('academico-realizada').value =
             r.carga_horaria_realizada != null ? r.carga_horaria_realizada : '';
+        document.getElementById('academico-realizada').readOnly = true;
         renderCertificadoAcademico(data.certificado);
         renderDocumentosAcademicos(data.documentos || []);
     } finally {
@@ -103,7 +105,6 @@ async function salvarHorasAcademicas() {
             method: 'PUT',
             body: JSON.stringify({
                 carga_horaria_prevista: prevista === '' ? null : Number(prevista),
-                carga_horaria_realizada: realizada === '' ? null : Number(realizada),
             }),
         });
         showToast('Carga horária atualizada', 'success');
