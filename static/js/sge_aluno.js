@@ -12,6 +12,8 @@ let frequencias=[];
 let frequenciaVersao=null;
 async function carregarFrequencia() {
     const data=await sgeApi(`/api/residentes/${sgeRid}/frequencia`);
+    const me=await sgeApi('/api/me');
+    for(const input of document.getElementById('frequencia-form').elements) input.disabled=!['admin','user','atendimento','coordenacao'].includes(me.role);
     frequencias=data.registros;
     document.getElementById('frequencia-resumo').textContent=`Realizadas: ${data.realizadas}h / previstas: ${data.previstas}h — ${data.percentual}% — faltantes: ${data.faltantes}h`;
     document.getElementById('frequencia-body').innerHTML=frequencias.map(r=>`<tr><td>${se(r.data||'Saldo legado')}</td><td>${se(r.presenca)}</td><td>${r.horas}</td><td>${se(r.observacao)}</td><td>${se(r.responsavel)}</td><td>${r.data?`<button class="btn btn-sm" data-frequencia="${r.id}">Corrigir</button>`:''}</td></tr>`).join('');
@@ -42,6 +44,13 @@ async function carregarDocumentos() {
     sgeDocumentos=data.documentos;
     document.getElementById('documentos-gate').textContent=data.certificado.apto?'Apto para certificado':data.certificado.motivos.join(' ');
     document.getElementById('documentos-body').innerHTML=sgeDocumentos.map(d=>`<tr data-doc="${d.id}"><td>${se(d.nome)} ${d.obrigatorio?'(obrigatório)':'(opcional)'}</td><td><select name="status">${['Pendente','Recebido','Aprovado','Rejeitado','Expirado'].map(s=>`<option ${s===d.status?'selected':''}>${s}</option>`).join('')}</select></td><td><input name="validade" type="date" value="${se(d.validade||'')}"></td><td>${d.arquivo_url?`<a href="${se(d.arquivo_url)}">Baixar arquivo</a>`:'Sem arquivo'}<input name="arquivo" type="file" accept=".pdf,.png,.jpg,.jpeg"><button class="btn btn-sm" data-doc-action="upload">Anexar (até 8 MB)</button></td><td><input name="observacao" value="${se(d.observacao||'')}"></td><td>${se(d.aprovado_por||'—')} ${se(d.aprovado_em||'')}</td><td><button class="btn btn-sm" data-doc-action="salvar">Salvar revisão</button></td></tr>`).join('');
+    const me=await sgeApi('/api/me');
+    const operacional=['admin','user','atendimento','coordenacao'].includes(me.role);
+    for(const input of document.getElementById('documentos-novo').elements) input.disabled=!operacional;
+    document.getElementById('documentos-novo').elements.obrigatorio.disabled=me.role!=='admin';
+    for(const input of document.querySelectorAll('#documentos-body input,#documentos-body select,#documentos-body button')) input.disabled=!operacional;
+    for(const input of document.querySelectorAll('#documentos-body [name=status],#documentos-body [name=validade],#documentos-body [data-doc-action=salvar]')) input.disabled=!['admin','coordenacao'].includes(me.role);
+
 }
 document.getElementById('documentos-novo').addEventListener('submit',async event=>{
     event.preventDefault();

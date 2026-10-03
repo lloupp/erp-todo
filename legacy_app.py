@@ -817,16 +817,8 @@ def api_avancar_etapa(estagio_id):
     ''', (estagio_id, nova_etapa, data.get('observacao', ''), responsavel))
     db.commit()
 
-    # Send email notification
-    if row['email']:
-        etapa_nome = (ETAPAS_OBS if tipo_id == 1 else ETAPAS_OBR_OPT).get(nova_etapa, '')
-        enviar_email({
-            'estagio_id': estagio_id,
-            'tipo': 'avanco_etapa',
-            'assunto': f'Estagio atualizado - {etapa_nome}',
-            'mensagem': f'Ola {row["nome"]},\n\nSeu estagio em {row["especialidade"]} avancou para a etapa: {nova_etapa} - {etapa_nome}.\nResponsavel: {responsavel}\n\nSanta Casa / UFCSPA',
-            'email': row['email'],
-        })
+    # Advancing an operational stage never sends a communication.
+    # Outbound messages must be reviewed and submitted through Microsoft Graph.
 
     return jsonify({'etapa': nova_etapa})
 
@@ -1216,7 +1208,7 @@ def api_pendencias():
             COUNT(*) FILTER (WHERE status = "Em andamento")                      AS em_andamento,
             COUNT(*) FILTER (WHERE status = "Deferido")                          AS deferidos,
             COUNT(*) FILTER (WHERE status = "Confirmado")                        AS confirmados,
-            COUNT(*) FILTER (WHERE status_pagamento = "Pendente"
+            COUNT(*) FILTER (WHERE status_pagamento IN ("Pendente","Aguardando financeiro","Link solicitado","Link enviado","Aguardando pagamento","Vencido")
                              AND status NOT IN ("Cancelado","Indeferido","Desistente","Nao veio")) AS pag_pendente
         FROM residentes
     ''').fetchone()
@@ -2158,7 +2150,12 @@ def api_get_residentes():
         conds.append(f'({SQL_MES_INSCRICAO})=?'); params.append(mes_inscricao)
     if status:
         conds.append('status=?'); params.append(status)
-    if status_pagamento:
+    if status_pagamento == 'Pendente':
+        conds.append("status_pagamento IN ('Pendente','Aguardando financeiro','Link solicitado','Link enviado','Aguardando pagamento','Vencido')")
+    elif status_pagamento == 'Vencido':
+        conds.append("(status_pagamento='Vencido' OR (status_pagamento IN ('Pendente','Aguardando financeiro','Link solicitado','Link enviado','Aguardando pagamento') AND EXISTS(SELECT 1 FROM residente_financeiro f WHERE f.residente_id=residentes.id AND f.vencimento<?)))")
+        params.append(datetime.now().date().isoformat())
+    elif status_pagamento:
         conds.append('status_pagamento=?'); params.append(status_pagamento)
     if busca:
         conds.append('(nome LIKE ? OR email LIKE ? OR cpf LIKE ? OR telefone LIKE ? OR instituicao_origem LIKE ? OR especialidade LIKE ? OR observacao LIKE ?)')
@@ -2371,6 +2368,8 @@ def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, obse
 def api_create_residente():
     db = get_db()
     d = request.get_json()
+    if d.get('status','Interessado') not in STATUS_RESIDENTE:
+        return jsonify({'erro':'Status invalido.'}),400
     if not d.get('nome') or not d.get('especialidade') or not d.get('mes_ano'):
         return jsonify({'erro': 'Nome, especialidade e mes_ano sao obrigatorios'}), 400
     cur = db.execute('''
@@ -2387,11 +2386,19 @@ def api_create_residente():
         d.get('instituicao_origem'), d.get('programa_ano'),
         d.get('mes_ano'), d.get('inicio') or None, d.get('termino') or None,
         d.get('status', 'Interessado'),
-        d.get('valor') or None, d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
+        d.get('valor'), d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
         d.get('comprovante_pagamento'), d.get('observacao'),
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'),
     ))
-    criar_acao_pipeline(db, cur.lastrowid, 1)
+    rid = cur.lastrowid
+    from db_migrations import PIPELINE_STAGE_BY_STATUS
+    etapa = PIPELINE_STAGE_BY_STATUS.get(d.get('status','Interessado'))
+    if etapa:
+        criar_acao_pipeline(db,rid,etapa)
+    db.execute('INSERT INTO historico_residentes(residente_id,status,observacao,responsavel) VALUES (?,?,?,?)',
+               (rid,d.get('status','Interessado'),'Cadastro inicial',current_user.nome))
+    for audit_id in getattr(g,'sge_capacity_overrides',[]):
+        db.execute("UPDATE sge_auditoria SET detalhes=json_set(detalhes,'$.aluno_id',?) WHERE id=?",(rid,audit_id))
     db.commit()
     return jsonify({'id': cur.lastrowid}), 201
 
@@ -2421,7 +2428,7 @@ def api_update_residente(rid):
         d.get('instituicao_origem'), d.get('programa_ano'),
         d.get('mes_ano'), d.get('inicio') or None, d.get('termino') or None,
         novo_status,
-        d.get('valor') or None, d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
+        d.get('valor'), d.get('forma_pagamento'), d.get('status_pagamento', 'Pendente'),
         d.get('comprovante_pagamento'), d.get('observacao'),
         d.get('data_inscricao'), d.get('periodo_desejado'), d.get('mes_desejado'), rid,
     ))
@@ -2509,6 +2516,8 @@ def api_avancar_residente(rid):
         }), 409
 
     novo_status = d.get('status', row['status'])
+    if novo_status not in STATUS_RESIDENTE:
+        return jsonify({'erro':'Status invalido.'}),400
     obs = (d.get('observacao') or '').strip()
     responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
 
@@ -2770,15 +2779,7 @@ def api_delete_residente(rid):
     db = get_db()
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
-    if (db.execute('SELECT 1 FROM residente_frequencias WHERE residente_id=?',(rid,)).fetchone()
-            or db.execute('SELECT 1 FROM residente_documentos WHERE residente_id=?',(rid,)).fetchone()
-            or db.execute('SELECT 1 FROM residente_financeiro WHERE residente_id=?',(rid,)).fetchone()):
-        return jsonify({'erro':'Aluno com frequencia nao pode ser excluido; preserve o historico.'}),409
-    db.execute('DELETE FROM pipeline_acoes WHERE residente_id=?', (rid,))
-    db.execute('DELETE FROM historico_residentes WHERE residente_id=?', (rid,))
-    db.execute('DELETE FROM residentes WHERE id=?', (rid,))
-    db.commit()
-    return jsonify({'ok': True})
+    return jsonify({'erro':'Exclusao bloqueada para preservar dados e idempotencia do Forms. Cancele o cadastro com justificativa.'}),409
 
 
 @app.route('/api/residentes/exportar-csv', methods=['GET'])

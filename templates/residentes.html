@@ -99,7 +99,7 @@
             </select>
             <select id="f-pagamento" onchange="aplicarFiltro()">
                 <option value="">Todos pagamentos</option>
-                <option value="Pendente">Pendente</option>
+                <option value="Pendente">Todos os pendentes</option><option value="Aguardando financeiro">Aguardando financeiro</option><option value="Link solicitado">Link solicitado</option><option value="Link enviado">Link enviado</option><option value="Aguardando pagamento">Aguardando pagamento</option><option value="Vencido">Vencido</option><option value="Reembolsado">Reembolsado</option>
                 <option value="Pago">Pago</option>
                 <option value="Isento">Isento</option>
                 <option value="Cancelado">Cancelado</option>
@@ -241,7 +241,7 @@
                     <div class="form-group">
                         <label>Status Pagamento</label>
                         <select id="form-status-pag">
-                            <option value="Pendente">Pendente</option>
+                            <option value="Pendente">Pendente</option><option value="Aguardando financeiro">Aguardando financeiro</option><option value="Link solicitado">Link solicitado</option><option value="Link enviado">Link enviado</option><option value="Aguardando pagamento">Aguardando pagamento</option><option value="Vencido">Vencido</option><option value="Reembolsado">Reembolsado</option>
                             <option value="Pago">Pago</option>
                             <option value="Isento">Isento</option>
                             <option value="Cancelado">Cancelado</option>
@@ -476,15 +476,16 @@
     <div class="modal-overlay" id="modal-excluir">
         <div class="modal" style="max-width:400px;">
             <div class="modal-header">
-                <h3>Confirmar exclusao</h3>
+                <h3>Confirmar cancelamento</h3>
                 <button class="modal-close" onclick="fecharModal('modal-excluir')">&#10005;</button>
             </div>
             <div class="modal-body">
-                <p>Deseja realmente excluir <strong id="excluir-nome"></strong>? Esta acao nao pode ser desfeita.</p>
+                <p>Cancelar o cadastro de <strong id="excluir-nome"></strong>? Os dados e o histórico serão preservados.</p>
             </div>
+            <label style="padding:16px">Justificativa (administrador)<textarea id="cancelamento-motivo" required></textarea></label>
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="fecharModal('modal-excluir')">Cancelar</button>
-                <button class="btn btn-danger" onclick="excluirResidente()">Excluir</button>
+                <button class="btn btn-danger" onclick="excluirResidente()">Cancelar cadastro</button>
             </div>
         </div>
     </div>

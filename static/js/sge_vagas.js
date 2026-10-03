@@ -10,7 +10,7 @@ async function vagasApi(url, options = {}) {
 function vagasErro(error) { document.getElementById('vagas-erro').textContent = error.message; }
 async function carregarVagas() {
     const rows = await vagasApi('/api/sge/vagas');
-    document.getElementById('vagas-body').innerHTML = rows.map(p=>`<tr><td>${ve(p.especialidade)}</td><td>${ve(p.modalidade)}</td><td>${ve(p.inicio)} a ${ve(p.termino)}</td><td>${p.capacidade}</td><td>${p.ocupadas}${p.excedentes?` (${p.excedentes} excedentes)`:''}</td><td>${p.disponiveis}</td><td>${ve(p.situacao)}</td><td>${vagasAdmin?`<button class="btn btn-sm" data-periodo="${p.id}">Alterar capacidade</button>`:''}</td></tr>`).join('');
+    document.getElementById('vagas-body').innerHTML = rows.map(p=>`<tr><td>${ve(p.especialidade)}</td><td>${ve(p.modalidade)}</td><td>${ve(p.inicio)} a ${ve(p.termino)}</td><td>${p.capacidade}</td><td>${p.ocupadas}${p.ocupadas_sem_datas?` (${p.ocupadas_sem_datas} sem datas; ocupação conservadora)`:''}${p.excedentes?` (${p.excedentes} excedentes)`:''}</td><td>${p.disponiveis}</td><td>${ve(p.situacao)}</td><td>${vagasAdmin?`<button class="btn btn-sm" data-periodo="${p.id}">Alterar capacidade</button>`:''}</td></tr>`).join('');
 }
 document.getElementById('vagas-novo').addEventListener('submit', async event=>{
     event.preventDefault();

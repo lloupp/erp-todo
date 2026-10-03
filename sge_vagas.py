@@ -1,5 +1,5 @@
 """Capacity pools by specialty, modality and date window; no legacy rewrites."""
-from flask import jsonify, request, render_template
+from flask import jsonify, request, render_template, g
 from flask_login import current_user, login_required
 from sge_common import normalizar, data_iso, numero, auditar, iniciar_escrita
 
@@ -7,29 +7,39 @@ from sge_common import normalizar, data_iso, numero, auditar, iniciar_escrita
 OCUPANTES = {'Confirmado', 'Concluído'}
 
 
-def ocupacao(db, periodo, excluir=None):
-    total = 0
-    for table in ('residentes', 'estagios'):
-        rows = db.execute(f'SELECT * FROM {table} WHERE inicio<=? AND termino>=?',
-                          (periodo['termino'], periodo['inicio'])).fetchall()
-        for row in rows:
-            if excluir == (table, row['id']):
+def _ocupantes(db, periodo, excluir=None):
+    for table in ('residentes','estagios'):
+        filtro = "status IN ('Confirmado','Concluído')" if table=='residentes' else 'etapa>=5'
+        for row in db.execute(f'SELECT * FROM {table} WHERE {filtro}'):
+            if excluir==(table,row['id']):
                 continue
-            if table == 'residentes':
-                ativo = row['status'] in OCUPANTES
-                modalidade = row['modalidade']
-            else:
-                ativo = row['etapa'] >= 5
-                modalidade = {1:'Observership', 2:'Obrigatorio', 3:'Optativo'}.get(row['tipo_id'])
-            if (ativo and normalizar(row['especialidade']) == periodo['especialidade_chave']
-                    and normalizar(modalidade) == periodo['modalidade_chave']):
-                total += 1
-    return total
+            modalidade = row['modalidade'] if table=='residentes' else {1:'Observership',2:'Obrigatorio',3:'Optativo'}.get(row['tipo_id'])
+            if normalizar(row['especialidade'])!=periodo['especialidade_chave'] or normalizar(modalidade)!=periodo['modalidade_chave']:
+                continue
+            try:
+                inicio,termino=data_iso(row['inicio'],'inicio'),data_iso(row['termino'],'termino')
+                if termino<inicio:
+                    raise ValueError()
+            except ValueError:
+                # Undated active records conservatively occupy every matching window.
+                # Completed records with no dates remain historical, never guessed into a future window.
+                concluido = row['status']=='Concluído' if table=='residentes' else row['etapa']==8
+                if not concluido:
+                    yield True
+                continue
+            if inicio<=periodo['termino'] and termino>=periodo['inicio']:
+                yield False
+
+
+def ocupacao(db,periodo,excluir=None):
+    return sum(1 for _ in _ocupantes(db,periodo,excluir))
 
 
 def resumo(db, row):
     p = dict(row)
-    p['ocupadas'] = ocupacao(db, p)
+    ocupantes=list(_ocupantes(db,p))
+    p['ocupadas']=len(ocupantes)
+    p['ocupadas_sem_datas']=sum(ocupantes)
     p['disponiveis'] = max(0, p['capacidade'] - p['ocupadas'])
     p['excedentes'] = max(0, p['ocupadas'] - p['capacidade'])
     p['situacao'] = ('Lotado' if p['disponiveis'] == 0 else
@@ -44,7 +54,7 @@ def validar_vaga(db, aluno, table, override=False, motivo=None):
         raise ValueError('Termino deve ser igual ou posterior ao inicio.')
     modalidade = aluno.get('modalidade') if table == 'residentes' else {1:'Observership',2:'Obrigatorio',3:'Optativo'}.get(aluno.get('tipo_id'))
     pools = db.execute('SELECT * FROM vagas_periodos WHERE especialidade_chave=? AND modalidade_chave=? AND inicio<=? AND termino>=?',
-                      (normalizar(aluno['especialidade']), normalizar(modalidade), termino, inicio)).fetchall()
+                      (normalizar(aluno.get('especialidade')), normalizar(modalidade), termino, inicio)).fetchall()
     if not pools:
         raise ValueError('Cadastre capacidade para a especialidade, modalidade e todo o periodo antes de confirmar.')
     # Validate all intersecting windows, including an internship spanning several pools.
@@ -53,9 +63,10 @@ def validar_vaga(db, aluno, table, override=False, motivo=None):
         if ocupadas >= pool['capacidade']:
             if not (override is True and current_user.role == 'admin' and str(motivo or '').strip()):
                 raise ValueError(f"Periodo lotado: {ocupadas}/{pool['capacidade']}. Override exige administrador e justificativa.")
-            auditar(db, 'vagas_periodos', pool['id'], 'override_capacidade',
+            audit_id = auditar(db, 'vagas_periodos', pool['id'], 'override_capacidade',
                     {'aluno_id':aluno.get('id'), 'tabela':table, 'ocupadas':ocupadas,
                      'capacidade':pool['capacidade'], 'motivo':str(motivo).strip()})
+            g.sge_capacity_overrides = getattr(g,'sge_capacity_overrides',[]) + [audit_id]
     # No gaps allowed: contiguous pools may cover a longer internship.
     cursor = inicio
     from datetime import date, timedelta
@@ -152,6 +163,9 @@ def register_vagas(app, get_db):
         rid = (request.view_args or {}).get('rid') or (request.view_args or {}).get('estagio_id')
         iniciar_escrita(db)
         row = db.execute(f'SELECT * FROM {table} WHERE id=?',(rid,)).fetchone() if rid else None
+        if rid and not row:
+            db.rollback()
+            return None
         aluno = dict(row) if row else {}
         aluno.update(d)
         if rid:

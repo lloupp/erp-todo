@@ -76,6 +76,7 @@ class SgeOperationsTests(unittest.TestCase):
         self.assertEqual(p['excedentes'],1)
         with sqlite3.connect(self.db_path) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM sge_auditoria WHERE acao='override_capacidade'").fetchone()[0],1)
+            self.assertIsNotNone(db.execute("SELECT json_extract(detalhes,'$.aluno_id') FROM sge_auditoria WHERE acao='override_capacidade'").fetchone()[0])
         self.assertEqual(self.client.put(f'/api/sge/vagas/{pid}',json={'capacidade':0}).status_code,409)
         # Date changes cannot silently move a confirmed record outside configured capacity.
         self.assertEqual(self.client.put(f'/api/residentes/{a}',json={'termino':'2050-01-01'}).status_code,409)
@@ -221,3 +222,110 @@ class SgeOperationsTests(unittest.TestCase):
                 self.assertEqual(self.client.post(f'/api/residentes/{rid}/acao',json={'etapa':1,'resultado':'revisado'}).status_code,403)
             if role=='somente_leitura':
                 self.assertEqual(self.client.post('/api/integracoes/outlook/enviar',json={'destinatario':'aluno@example.org','assunto':'Teste','mensagem':'Texto'}).status_code,403)
+
+    def test_daily_center_actionable_categories_and_links(self):
+        self.login_admin(); rid=self.create(inicio=(date.today()+timedelta(days=2)).isoformat(),termino=(date.today()+timedelta(days=5)).isoformat())
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE pipeline_acoes SET prazo_em=?,prioridade=2,bloqueado=1,bloqueio_motivo='Aguardando chefe' WHERE residente_id=?",((date.today()-timedelta(days=1)).isoformat(),rid))
+        response=self.client.get('/api/sge/hoje'); self.assertEqual(response.status_code,200)
+        groups={c['id']:c for c in response.get_json()['categorias']}
+        for key in ['atrasadas','urgentes','bloqueadas','sem_responsavel','novas_inscricoes','pagamentos','documentos']:
+            self.assertIn(rid,[i['id'] for i in groups[key]['items']])
+        item=next(i for i in groups['atrasadas']['items'] if i['id']==rid)
+        self.assertIn('/residentes?acao=',item['url'])
+        self.assertEqual(self.client.get(item['url']).status_code,200)
+        self.assertEqual(self.client.get('/sge/hoje').status_code,200)
+        self.assertEqual(self.client.get(f'/sge/residentes/{rid}').status_code,200)
+        response=self.client.get('/api/sge/hoje?categoria=sem_responsavel&limit=1')
+        c=response.get_json()['categorias'][0]
+        self.assertEqual(len(c['items']),1)
+        self.assertIsNotNone(c['proximo_offset'])
+        self.assertEqual(self.client.get('/api/sge/hoje?categoria=invalida').status_code,400)
+        self.assertNotIn('cpf',str(response.get_json()))
+        self.client.get('/logout')
+        self.assertEqual(self.client.get('/api/sge/hoje').status_code,302)
+
+    def test_full_operational_flow_and_daily_certificate_lists(self):
+        self.login_admin()
+        rid=self.create(inicio=(date.today()-timedelta(days=3)).isoformat(),termino=(date.today()-timedelta(days=1)).isoformat(),valor=100)
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/academico',json={'carga_horaria_prevista':12}).status_code,200)
+        for offset in [1,2]:
+            self.assertEqual(self.client.post(f'/api/residentes/{rid}/frequencia',json={'data':(date.today()-timedelta(days=offset)).isoformat(),'presenca':'Presente','horas':6}).status_code,201)
+        self.approve_document(rid)
+        for etapa,resultado in [(1,'revisado'),(2,'confirmou'),(3,'enviado'),(4,'defere'),(5,'solicitado'),(6,'enviado')]:
+            r=self.client.post(f'/api/residentes/{rid}/acao',json={'etapa':etapa,'resultado':resultado})
+            self.assertEqual(r.status_code,200,r.get_data(as_text=True))
+        self.assertEqual(self.client.get(f'/api/residentes/{rid}/financeiro').get_json()['status'],'Link enviado')
+        f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Pago','data_pagamento':date.today().isoformat()}).status_code,200)
+        for etapa,resultado in [(7,'comprovante_ok'),(8,'enviado')]:
+            r=self.client.post(f'/api/residentes/{rid}/acao',json={'etapa':etapa,'resultado':resultado})
+            self.assertEqual(r.status_code,200,r.get_data(as_text=True))
+        self.assertFalse(self.client.get(f'/api/residentes/{rid}/academico').get_json()['certificado']['apto'])
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/acao',json={'etapa':9,'resultado':'concluido'}).status_code,200)
+        self.assertTrue(self.client.get(f'/api/residentes/{rid}/academico').get_json()['certificado']['apto'])
+        def ids(category):
+            return [i['id'] for i in self.client.get('/api/sge/hoje?categoria='+category).get_json()['categorias'][0]['items']]
+        self.assertIn(rid,ids('certificados_aptos'))
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/certificado',json={'acao':'emitir'}).status_code,200)
+        self.assertNotIn(rid,ids('certificados_aptos'))
+        self.assertIn(rid,ids('certificados_enviar'))
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/certificado',json={'acao':'enviar'}).status_code,200)
+        self.assertNotIn(rid,ids('certificados_enviar'))
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+
+    def test_legacy_stage_change_never_sends_automatic_email(self):
+        self.login_admin()
+        r=self.client.post('/api/estagios',json={'tipo_id':1,'mes_ano':'2026-10','semana':1,'nome':'Legacy email guard','especialidade':'Cardiologia','email':'test@example.org'})
+        self.assertEqual(r.status_code,201)
+        eid=r.get_json()['id']
+        with patch('legacy_app.enviar_email') as email:
+            r=self.client.post(f'/api/estagios/{eid}/avancar',json={})
+        self.assertEqual(r.status_code,200)
+        email.assert_not_called()
+
+    def test_cancel_preserves_forms_idempotency_and_history(self):
+        self.login_admin()
+        payload={'form_id':'cancel-test','response_id':'1','nome':'Aluno Forms','especialidade':'Cardiologia','mes_ano':'2026-10'}
+        headers={'X-Forms-Webhook-Secret':'integration-forms-secret'}
+        response=self.client.post('/api/integracoes/forms/inscricao',json=payload,headers=headers)
+        self.assertEqual(response.status_code,201);rid=response.get_json()['id']
+        self.assertEqual(self.client.delete(f'/api/residentes/{rid}').status_code,409)
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/avancar',json={'forcar':True,'status':'Cancelado','observacao':'Pedido do aluno'}).status_code,200)
+        repeated=self.client.post('/api/integracoes/forms/inscricao',json=payload,headers=headers)
+        self.assertEqual(repeated.status_code,200)
+        self.assertEqual(repeated.get_json()['id'],rid)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM pipeline_acoes WHERE residente_id=?',(rid,)).fetchone()[0],1)
+            self.assertEqual(db.execute('SELECT status FROM residentes WHERE id=?',(rid,)).fetchone()[0],'Cancelado')
+
+    def test_cannot_reprice_refunded_process(self):
+        self.login_admin();rid=self.create(valor=100)
+        f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        f=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Pago','data_pagamento':date.today().isoformat()}).get_json()
+        f=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Reembolsado','reembolso':100,'observacao':'Devolucao integral'}).get_json()
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'valor_previsto':1}).status_code,400)
+
+    def test_capacity_conservatively_counts_undated_active_legacy_student(self):
+        self.login_admin()
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("INSERT INTO residentes(nome,especialidade,mes_ano,status,modalidade) VALUES ('Sem datas','Geriatria','2026-10','Confirmado','Optativo')")
+        p=self.client.post('/api/sge/vagas',json={'especialidade':'Geriatria','modalidade':'Optativo','inicio':'2026-10-01','termino':'2026-10-31','capacidade':1})
+        self.assertEqual(p.status_code,201)
+        self.assertEqual((p.get_json()['ocupadas'],p.get_json()['ocupadas_sem_datas']),(1,1))
+        r=self.client.post('/api/residentes',json={'nome':'Novo','especialidade':'Geriatria','mes_ano':'2026-10','inicio':'2026-10-01','termino':'2026-10-31','status':'Confirmado'})
+        self.assertEqual(r.status_code,409)
+
+    def test_legacy_edit_and_pending_filter_preserve_financial_process(self):
+        self.login_admin();rid=self.create(valor=125)
+        f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        f=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Link enviado'}).get_json()
+        rows=self.client.get('/api/residentes?status_pagamento=Pendente&per_page=1000').get_json()['data']
+        self.assertIn(rid,[r['id'] for r in rows])
+        response=self.client.put(f'/api/residentes/{rid}',json={'telefone':'123456'})
+        self.assertEqual(response.status_code,200,response.get_data(as_text=True))
+        updated=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        self.assertEqual((updated['previsto_centavos'],updated['status'],updated['versao']),(12500,'Link enviado',f['versao']))
+        self.assertGreaterEqual(self.client.get('/api/pendencias').get_json()['res_pag_pendente'],1)

@@ -75,3 +75,6 @@ backups/
 *.xlsx
 *.xls
 *.csv
+
+# Private uploaded files must never be committed
+private_sge_files/

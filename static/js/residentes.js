@@ -12,6 +12,7 @@ let residentesCache = {};   // id -> registro (ultima pagina carregada), usado p
 let AREA_MEDICA = null;     // cache dos contatos de chefes de servico
 let MENSAGENS_MODELO = {};  // chave -> texto do modelo (editavel em /configuracoes)
 let USUARIO_LOGADO_NOME = '';
+let USUARIO_LOGADO_ROLE = 'somente_leitura';
 
 const STATUS_FLOW = [
     'Interessado', 'Em andamento', 'Deferido', 'Confirmado'
@@ -61,6 +62,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     loadResidentes();
     loadWelcomeBanner();
+    try {
+        if (urlParams.has('acao') || urlParams.has('aluno')) {
+            const fila = await apiFetch('/api/pipeline/fila');
+            const acao = urlParams.has('acao')
+                ? fila.find(a => a.acao_id === Number(urlParams.get('acao')))
+                : fila.find(a => a.residente_id === Number(urlParams.get('aluno')));
+            if (acao) await abrirModalPipelineAcao(acao);
+            else showToast('A ação já foi concluída ou não está disponível. Atualize a Central do Dia.', 'info');
+        }
+        if (urlParams.has('academico')) {
+            const id = Number(urlParams.get('academico'));
+            const data = await apiFetch(`/api/residentes/${id}/academico`);
+            await abrirAcademico(id,data.residente.nome);
+        }
+    } catch (_) {}
 });
 
 async function carregarMensagensModelo() {
@@ -562,6 +578,7 @@ async function loadUserInfo() {
         if (el && r.nome) {
             el.innerHTML = `<strong>${r.nome}</strong><span>${r.role}</span>`;
         }
+        USUARIO_LOGADO_ROLE = r.role;
         USUARIO_LOGADO_NOME = (r.nome || '').trim().split(' ')[0];
     } catch (_) {}
 }
@@ -889,7 +906,7 @@ function renderTabela(rows) {
                 <button class="btn btn-sm btn-ghost" onclick="abrirHistorico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Historico">&#9776;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirModalEditar(${r.id})" title="Editar">&#9998;</button>
                 <a class="btn btn-sm btn-ghost" href="/api/residentes/${r.id}/pdf" target="_blank" title="Gerar PDF da ficha">&#128196;</a>
-                <button class="btn btn-sm btn-danger" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">&#128465;</button>
+                <button class="btn btn-sm btn-danger" title="Cancelar cadastro (administrador)" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">Cancelar</button>
             </td>
         </tr>`;
     }).join('');
@@ -920,9 +937,12 @@ function abrirModalNovo() {
     document.getElementById('form-tipo').value = 'Residente';
     document.getElementById('form-modalidade').value = 'Optativo';
     document.getElementById('form-status').value = 'Interessado';
+    document.getElementById('form-status').disabled = true;
     document.getElementById('form-valor').value = '';
     document.getElementById('form-forma-pag').value = '';
     document.getElementById('form-status-pag').value = 'Pendente';
+    ['form-valor','form-comprovante'].forEach(id => { const field=document.getElementById(id); if(field) field.disabled=false; });
+    document.getElementById('form-status-pag').disabled=true;
     document.getElementById('form-comprovante').value = '';
     abrirModal('modal-residente');
 }
@@ -950,6 +970,8 @@ async function abrirModalEditar(id) {
         document.getElementById('form-inicio').value = r.inicio || '';
         document.getElementById('form-termino').value = r.termino || '';
         document.getElementById('form-status').value = r.status || 'Interessado';
+        document.getElementById('form-status').disabled = true;
+        ['form-valor','form-status-pag','form-comprovante'].forEach(id => { const field=document.getElementById(id); if(field) field.disabled=true; });
         document.getElementById('form-valor').value = r.valor != null ? r.valor : '';
         document.getElementById('form-forma-pag').value = r.forma_pagamento || '';
         document.getElementById('form-status-pag').value = r.status_pagamento || 'Pendente';
@@ -998,6 +1020,9 @@ async function salvarResidente() {
         observacao: document.getElementById('form-obs').value.trim(),
     };
 
+    if (id) {
+        delete body.valor; delete body.status_pagamento; delete body.comprovante_pagamento;
+    }
     try {
         if (id) {
             await apiFetch(`/api/residentes/${id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -1088,6 +1113,7 @@ async function abrirHistorico(id, nome) {
 // ─── Excluir ──────────────────────────────────────────────────
 function confirmarExclusao(id, nome) {
     idExcluir = id;
+    document.getElementById('cancelamento-motivo').value = '';
     document.getElementById('excluir-nome').textContent = nome;
     abrirModal('modal-excluir');
 }
@@ -1095,8 +1121,10 @@ function confirmarExclusao(id, nome) {
 async function excluirResidente() {
     if (!idExcluir) return;
     try {
-        await apiFetch(`/api/residentes/${idExcluir}`, { method: 'DELETE' });
-        showToast('Registro excluido', 'success');
+        const motivo = document.getElementById('cancelamento-motivo').value.trim();
+        if (!motivo) { showToast('Informe a justificativa do cancelamento.', 'error'); return; }
+        await apiFetch(`/api/residentes/${idExcluir}/avancar`, {method:'POST',body:JSON.stringify({status:'Cancelado',forcar:true,observacao:motivo})});
+        showToast('Cancelamento registrado; dados preservados', 'success');
         fecharModal('modal-excluir');
         idExcluir = null;
         loadResidentes();
