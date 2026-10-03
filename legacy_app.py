@@ -2261,6 +2261,7 @@ def fechar_pipeline_pendente(db, residente_id, motivo, responsavel):
 
 def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, observacao=None):
     """Conclui a acao atual, valida bloqueios/requisitos e cria a proxima."""
+    db.execute("BEGIN IMMEDIATE")
     transicoes = PIPELINE_TRANSICOES.get(etapa_atual, {})
     if resultado not in transicoes:
         raise ValueError(f'Resultado "{resultado}" invalido para a etapa {etapa_atual}')
@@ -2384,7 +2385,7 @@ def api_update_residente(rid):
     if not row:
         return jsonify({'erro': 'Nao encontrado'}), 404
     d = request.get_json()
-    novo_status = d.get('status', 'Interessado')
+    novo_status = d.get('status', row['status'])
     db.execute('''
         UPDATE residentes SET
             nome=?, email=?, telefone=?, cpf=?, tipo=?, modalidade=?,
@@ -2477,7 +2478,9 @@ def api_avancar_residente(rid):
         "SELECT id, etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
         (rid,),
     ).fetchone()
-    forcar = bool(d.get('forcar'))
+    forcar = d.get('forcar') is True
+    if not (forcar and current_user.role == 'admin' and str(d.get('observacao') or '').strip()):
+        return jsonify({'erro': 'Correcao exige administrador, forcar=true e justificativa.'}), 409
     if pendente and not (forcar and getattr(current_user, 'role', None) == 'admin'):
         return jsonify({
             'erro': (
@@ -2530,7 +2533,8 @@ def api_residente_acao(rid):
     responsavel = current_user.nome if current_user.is_authenticated else 'Sistema'
     try:
         resultado_pipeline = avancar_pipeline(db, rid, int(etapa), resultado, responsavel, observacao)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
+        db.rollback()
         return jsonify({'erro': str(e)}), 400
     return jsonify(resultado_pipeline)
 

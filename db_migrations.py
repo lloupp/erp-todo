@@ -124,6 +124,16 @@ def ensure_database(
                 applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS sge_auditoria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entidade TEXT NOT NULL,
+                entidade_id INTEGER,
+                acao TEXT NOT NULL,
+                responsavel TEXT NOT NULL,
+                detalhes TEXT,
+                ts DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS tipo_estagio (
                 id INTEGER PRIMARY KEY,
                 nome TEXT NOT NULL
@@ -370,6 +380,11 @@ def ensure_database(
                ON residentes(origem, origem_ref)
                WHERE origem_ref IS NOT NULL"""
         )
+        duplicates = db.execute("SELECT residente_id FROM pipeline_acoes WHERE situacao='pendente' GROUP BY residente_id HAVING COUNT(*)>1").fetchall()
+        if duplicates:
+            raise RuntimeError('Pipeline possui acoes pendentes duplicadas; revise os registros sem apagar historico.')
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_unica_pendente ON pipeline_acoes(residente_id) WHERE situacao='pendente'")
+        db.execute("INSERT OR IGNORE INTO schema_migrations(name) VALUES ('sge_operational_guards_v1')")
         db.execute('DROP INDEX IF EXISTS idx_estagios_cracha')
         db.executemany(
             'INSERT OR IGNORE INTO tipo_estagio (id, nome) VALUES (?, ?)',

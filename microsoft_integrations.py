@@ -77,10 +77,9 @@ def _fetch_graph_token(config: dict) -> str:
         with urlrequest.urlopen(req, timeout=15) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:1000]
-        raise RuntimeError(f"Falha ao autenticar no Microsoft Graph ({exc.code}): {detail}") from exc
+        raise RuntimeError(f"Falha ao autenticar no Microsoft Graph (HTTP {exc.code}).") from exc
     except error.URLError as exc:
-        raise RuntimeError(f"Falha de rede ao autenticar no Microsoft Graph: {exc.reason}") from exc
+        raise RuntimeError("Falha de rede ao autenticar no Microsoft Graph.") from exc
 
     token = payload.get("access_token")
     if not token:
@@ -116,10 +115,9 @@ def _send_graph_mail(config: dict, *, to: str, subject: str, body: str) -> None:
             if response.status not in {200, 202}:
                 raise RuntimeError(f"Microsoft Graph retornou HTTP {response.status}.")
     except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:1500]
-        raise RuntimeError(f"Falha ao enviar e-mail pelo Outlook ({exc.code}): {detail}") from exc
+        raise RuntimeError(f"Falha ao enviar e-mail pelo Outlook (HTTP {exc.code}).") from exc
     except error.URLError as exc:
-        raise RuntimeError(f"Falha de rede ao enviar e-mail pelo Outlook: {exc.reason}") from exc
+        raise RuntimeError("Falha de rede ao enviar e-mail pelo Outlook.") from exc
 
 
 def _normalize_month(value: str | None, inicio: str | None) -> str | None:
@@ -329,8 +327,8 @@ def register_microsoft_integrations(app, get_db, criar_acao_pipeline):
             raise
         except Exception as exc:
             db.rollback()
-            app.logger.exception("Falha ao importar resposta do Microsoft Forms")
-            return jsonify({"erro": f"Falha ao importar resposta: {exc}"}), 500
+            app.logger.error("Falha ao importar resposta do Microsoft Forms (%s)", type(exc).__name__)
+            return jsonify({"erro": "Falha ao importar resposta."}), 500
 
         return jsonify({"ok": True, "duplicado": False, "id": rid}), 201
 
@@ -407,13 +405,13 @@ def register_microsoft_integrations(app, get_db, criar_acao_pipeline):
                     status="error",
                     residente_id=residente_id,
                     payload=audit_payload,
-                    error_message=str(exc)[:1500],
+                    error_message="Falha no envio. Verifique a configuracao e o status do Microsoft 365.",
                     actor=actor,
                 )
                 db.commit()
             except Exception:
                 db.rollback()
-            app.logger.warning("Falha ao enviar Outlook: %s", exc)
-            return jsonify({"erro": str(exc)}), 502
+            app.logger.warning("Falha ao enviar Outlook (%s)", type(exc).__name__)
+            return jsonify({"erro": "Falha no envio. Verifique a configuracao do Microsoft 365."}), 502
 
         return jsonify({"ok": True, "enviado": True, "remetente": config["sender"]})

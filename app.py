@@ -12,7 +12,8 @@ import os
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from flask import request
+from flask import request, jsonify
+from flask_login import current_user
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
@@ -82,6 +83,46 @@ def bootstrap_database() -> None:
         pipeline_etapas=_legacy.PIPELINE_ETAPAS,
         data_dir=os.path.join(BASE_DIR, 'data'),
     )
+
+
+@app.before_request
+def _sge_status_guards():
+    if request.method not in {'POST', 'PUT', 'PATCH'} or not request.is_json:
+        return None
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'erro': 'Envie um objeto JSON valido.'}), 400
+    if not current_user.is_authenticated:
+        return None
+    if request.path == '/api/residentes' and request.method == 'POST':
+        if data.get('status', 'Interessado') != 'Interessado' and current_user.role != 'admin':
+            return jsonify({'erro': 'Novo cadastro deve entrar na Triagem.'}), 403
+    if request.endpoint == 'api_update_residente' and 'status' in data:
+        row = _legacy.get_db().execute('SELECT status FROM residentes WHERE id=?', (request.view_args['rid'],)).fetchone()
+        if row and row['status'] != data['status']:
+            return jsonify({'erro': 'Altere o status pelo pipeline ou pela correcao administrativa justificada.'}), 409
+    if request.endpoint in {'api_create_residente', 'api_avancar_residente'} and data.get('status') == 'Concluído':
+        termino = data.get('termino')
+        if request.endpoint == 'api_avancar_residente':
+            row = _legacy.get_db().execute('SELECT termino FROM residentes WHERE id=?', (request.view_args['rid'],)).fetchone()
+            termino = row['termino'] if row else None
+        from datetime import date
+        try:
+            if date.fromisoformat(termino) > date.today():
+                raise ValueError()
+        except (TypeError, ValueError):
+            return jsonify({'erro': 'Conclusao exige termino real, com data valida nao futura.'}), 409
+
+
+@app.after_request
+def _sge_audit_mutation(response):
+    if (request.path.startswith('/api/') and request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}
+            and current_user.is_authenticated and 200 <= response.status_code < 300):
+        db = _legacy.get_db()
+        db.execute('INSERT INTO sge_auditoria(entidade, entidade_id, acao, responsavel) VALUES (?,?,?,?)',
+                   (request.endpoint or 'api', (request.view_args or {}).get('rid'), request.method, current_user.nome))
+        db.commit()
+    return response
 
 
 if __name__ == '__main__':
