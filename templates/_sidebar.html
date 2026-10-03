@@ -5,6 +5,7 @@
     </div>
     <div class="sidebar-body">
         <div class="sidebar-nav">
+            <a href="/sge/hoje" class="nav-link">Central do Dia</a>
             <a href="/dashboard" class="nav-link{{ ' active' if active_page == 'dashboard' else '' }}">Dashboard</a>
             <a href="/residentes" class="nav-link{{ ' active' if active_page == 'residentes' else '' }}">Residentes</a>
             <a href="/sge/vagas" class="nav-link">Vagas por período</a>
@@ -29,6 +30,11 @@
     fetch('/api/me')
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (u) {
+            if (u) {
+                const box = document.getElementById('sidebar-user');
+                if (box) { box.querySelector('strong').textContent = u.nome || u.username; box.querySelector('span').textContent = u.role; }
+            }
+            document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
             if (u && u.role === 'admin') {
                 ['nav-usuarios', 'nav-vagas'].forEach(function (id) {
                     var e = document.getElementById(id);

@@ -41,6 +41,8 @@ def install_production_guards(app) -> None:
                 return jsonify({'erro':'Perfil sem permissao operacional.'}),403
             if role == 'financeiro' and request.path.startswith('/api/') and '/financeiro' not in request.path:
                 return jsonify({'erro':'Perfil financeiro restrito ao modulo financeiro.'}),403
+            if '/certificado' in request.path and request.method in UNSAFE_METHODS and role not in {'admin','coordenacao'}:
+                return jsonify({'erro':'Certificado exige coordenacao ou administrador.'}),403
             if '/pago' in request.path and role not in {'admin','financeiro'}:
                 return jsonify({'erro':'Pagamento exige financeiro ou administrador.'}),403
             if current_user.role == 'somente_leitura' and request.path.startswith('/api/'):

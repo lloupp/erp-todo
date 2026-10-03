@@ -177,7 +177,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertIn('relatorios_dashboard.js', html)
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
     def test_non_admin_cannot_mutate_sensitive_configuration(self):
         self.login_admin()
@@ -340,7 +340,7 @@ class AppIntegrationTests(unittest.TestCase):
 
         self.login_admin()
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
     def test_outlook_pipeline_send_uses_graph_and_is_audited(self):
         self.login_admin()
@@ -393,7 +393,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertNotIn('test-secret', status.get_data(as_text=True))
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
 
     def test_pipeline_task_management_priority_owner_and_block(self):
@@ -464,7 +464,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(advanced.get_json()['proxima_etapa'], 2)
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
     def test_pipeline_orientation_does_not_finish_internship(self):
         self.login_admin()

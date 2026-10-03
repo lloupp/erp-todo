@@ -149,11 +149,11 @@ def _forms_signature_ok(secret: str, raw_body: bytes, supplied: str) -> bool:
     if not secret or not supplied:
         return False
     # Supports either the plain shared secret or an HMAC-SHA256 signature.
-    if hmac.compare_digest(secret, supplied):
+    if hmac.compare_digest(secret.encode("utf-8"), supplied.encode("utf-8")):
         return True
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     candidate = supplied.removeprefix("sha256=").strip()
-    return hmac.compare_digest(expected, candidate)
+    return hmac.compare_digest(expected.encode("ascii"), candidate.encode("utf-8"))
 
 
 def register_microsoft_integrations(app, get_db, criar_acao_pipeline):

@@ -44,10 +44,10 @@ function renderCertificadoAcademico(c) {
         : '';
 
     let botoes = '';
-    if (c.apto && !c.certificado_emitido_em) {
+    if (['admin','coordenacao'].includes(USUARIO_LOGADO_ROLE) && c.apto && !c.certificado_emitido_em) {
         botoes += '<button class="btn btn-sm btn-primary" onclick="registrarCertificadoAcademico(\'emitir\')">Registrar emissão</button>';
     }
-    if (c.certificado_emitido_em && !c.certificado_enviado_em) {
+    if (['admin','coordenacao'].includes(USUARIO_LOGADO_ROLE) && c.apto && c.certificado_emitido_em && !c.certificado_enviado_em) {
         botoes += '<button class="btn btn-sm btn-primary" onclick="registrarCertificadoAcademico(\'enviar\')">Registrar envio</button>';
     }
 

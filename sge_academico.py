@@ -187,7 +187,7 @@ def register_sge_academico(app, get_db):
                 return jsonify({'erro':'Arquivo mudou. Atualize e confira antes de aprovar.'}),409
             if not atual or not atual['arquivo_id'] or (validade and validade<date.today().isoformat()):
                 return jsonify({'erro':'Anexe um arquivo valido antes de aprovar.'}),409
-        if not obrigatorio and current_user.role != 'admin':
+        if not obrigatorio and (not atual or atual['obrigatorio']) and current_user.role != 'admin':
             return jsonify({'erro':'Dispensa de requisito exige administrador.'}),403
         iniciar_escrita(db)
         if doc_id:

@@ -29,9 +29,10 @@ def numero(value, campo, maximo=None):
 
 
 def auditar(db, entidade, entidade_id, acao, detalhes=None):
-    db.execute('INSERT INTO sge_auditoria(entidade,entidade_id,acao,responsavel,detalhes) VALUES (?,?,?,?,?)',
+    cur = db.execute('INSERT INTO sge_auditoria(entidade,entidade_id,acao,responsavel,detalhes) VALUES (?,?,?,?,?)',
                (entidade, entidade_id, acao, current_user.nome,
                 json.dumps(detalhes, ensure_ascii=False) if detalhes is not None else None))
+    return cur.lastrowid
 
 
 def iniciar_escrita(db):

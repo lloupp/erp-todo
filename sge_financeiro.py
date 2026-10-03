@@ -1,4 +1,5 @@
 """One financial process per student, with exact monetary amounts and audit."""
+from werkzeug.exceptions import RequestEntityTooLarge
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from flask import jsonify, request
@@ -109,7 +110,8 @@ def register_financeiro(app,get_db):
                 raise ValueError('Vencido exige vencimento anterior a hoje.')
             if status=='Pago' and not f['data_pagamento']:
                 raise ValueError('Informe a data do pagamento.')
-            if f['status']=='Pago' and any(f[k]!=anterior[k] for k in ('previsto_centavos','desconto_centavos')):
+            f['final_centavos']=f['previsto_centavos']-f['desconto_centavos']
+            if f['status'] in {'Pago','Reembolsado','Cancelado','Isento'} and any(f[k]!=anterior[k] for k in ('previsto_centavos','desconto_centavos')):
                 raise ValueError('Nao altere valores de pagamento confirmado; registre reembolso quando necessario.')
             if status=='Reembolsado':
                 if f['status'] not in {'Pago','Reembolsado'} or not 0<f['reembolso_centavos']<=f['final_centavos']:
@@ -124,7 +126,7 @@ def register_financeiro(app,get_db):
             persistir(db,f)
             auditar(db,'residente_financeiro',rid,'atualizar',
                     {'status_antes':anterior['status'],'status':status,'previsto_centavos':f['previsto_centavos'],
-                     'desconto_centavos':f['desconto_centavos'],'reembolso_centavos':f['reembolso_centavos'],'versao':f['versao']})
+                     'desconto_centavos':f['desconto_centavos'],'reembolso_antes':anterior['reembolso_centavos'],'reembolso_centavos':f['reembolso_centavos'],'versao':f['versao']})
             db.commit()
             return jsonify(financeiro(db,rid))
         except ValueError as exc:
@@ -156,6 +158,11 @@ def register_financeiro(app,get_db):
             db.rollback()
             if key: store.remove_uncommitted(key)
             return jsonify({'erro':str(exc)}),400
+        except RequestEntityTooLarge:
+            db.rollback()
+            if key:
+                store.remove_uncommitted(key)
+            raise
         except Exception:
             db.rollback()
             if key: store.remove_uncommitted(key)

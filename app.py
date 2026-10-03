@@ -47,6 +47,9 @@ app = _legacy.app
 from sge_academico import register_sge_academico
 from microsoft_integrations import register_microsoft_integrations
 
+from sge_central import register_central
+register_central(app, _legacy.get_db)
+
 from sge_financeiro import register_financeiro
 register_financeiro(app, _legacy.get_db)
 
@@ -132,7 +135,7 @@ def _sge_audit_mutation(response):
             and current_user.is_authenticated and 200 <= response.status_code < 300):
         db = _legacy.get_db()
         db.execute('INSERT INTO sge_auditoria(entidade, entidade_id, acao, responsavel) VALUES (?,?,?,?)',
-                   (request.endpoint or 'api', (request.view_args or {}).get('rid'), request.method, current_user.nome))
+                   (request.endpoint or 'api', (request.view_args or {}).get('rid') or ((response.get_json(silent=True) or {}).get('id') if response.is_json else None), request.method, current_user.nome))
         db.commit()
     return response
 
