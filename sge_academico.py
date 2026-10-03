@@ -11,6 +11,7 @@ from datetime import date
 from sge_frequencia import horas_realizadas
 from sge_documentos import documentos_publicos
 from sge_common import data_iso, auditar, iniciar_escrita
+from sge_financeiro import financeiro
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
@@ -96,6 +97,7 @@ def register_sge_academico(app, get_db):
         documentos = documentos_publicos(db,rid)
         residente = dict(residente)
         residente['carga_horaria_realizada'] = horas_realizadas(db,rid)
+        residente['status_pagamento'] = financeiro(db,rid)['status_efetivo']
         return residente, documentos
 
     @app.route("/api/residentes/<int:rid>/academico", methods=["GET"])

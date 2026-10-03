@@ -124,6 +124,21 @@ def ensure_database(
                 applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS residente_financeiro (
+                residente_id INTEGER PRIMARY KEY REFERENCES residentes(id) ON DELETE RESTRICT,
+                previsto_centavos INTEGER NOT NULL DEFAULT 0 CHECK(previsto_centavos>=0),
+                desconto_centavos INTEGER NOT NULL DEFAULT 0 CHECK(desconto_centavos>=0 AND desconto_centavos<=previsto_centavos),
+                status TEXT NOT NULL,
+                vencimento DATE,
+                data_pagamento DATE,
+                reembolso_centavos INTEGER NOT NULL DEFAULT 0 CHECK(reembolso_centavos>=0),
+                comprovante_id INTEGER REFERENCES sge_arquivos(id),
+                observacao TEXT,
+                responsavel TEXT,
+                versao INTEGER NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS residente_frequencias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 residente_id INTEGER NOT NULL REFERENCES residentes(id) ON DELETE RESTRICT,
@@ -392,6 +407,13 @@ def ensure_database(
                 if float(total)>0:
                     db.execute("INSERT INTO residente_frequencias(residente_id,data,horas,presenca,responsavel,observacao) VALUES (?,NULL,?,'Saldo legado','Migracao','Total anterior preservado; sem inferir datas de presenca.')",(rid,total))
             db.execute("INSERT INTO schema_migrations(name) VALUES ('sge_frequencia_v1')")
+
+        if not db.execute("SELECT 1 FROM schema_migrations WHERE name='sge_financeiro_v1'").fetchone():
+            from sge_financeiro import centavos, ESTADOS
+            for rid,valor,status in db.execute('SELECT id,valor,status_pagamento FROM residentes'):
+                db.execute('INSERT INTO residente_financeiro(residente_id,previsto_centavos,desconto_centavos,status,responsavel) VALUES (?,?,?,?,?)',
+                           (rid,centavos(valor or 0),centavos(valor or 0) if status=='Isento' else 0,status if status in ESTADOS else 'Aguardando financeiro','Migracao'))
+            db.execute("INSERT INTO schema_migrations(name) VALUES ('sge_financeiro_v1')")
 
         _add_missing_columns(db,'residente_documentos',[
             ('arquivo_id','INTEGER REFERENCES sge_arquivos(id)'),
