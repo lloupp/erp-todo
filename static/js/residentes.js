@@ -530,20 +530,29 @@ async function assumirAcaoPipeline() {
     } catch (_) {}
 }
 
-async function executarAcaoPipeline(resultado) {
+async function executarAcaoPipeline(resultado, override = null) {
     if (!pipelineAcaoAtual) return;
     const observacao = document.getElementById('pa-observacao').value.trim();
     try {
         await apiFetch(`/api/residentes/${pipelineAcaoAtual.residente.residente_id}/acao`, {
             method: 'POST',
-            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null }),
+            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null, ...(override || {}) }),
         });
         fecharModal('modal-pipeline-acao');
         showToast('Ação registrada.', 'success');
         carregarPipelineFila();
         loadResidentes();
         loadWelcomeBanner();
-    } catch (_) {}
+    } catch (error) {
+        if (!override && error.message.includes('Override exige')) {
+            const me = await apiFetch('/api/me');
+            if (me.role !== 'admin') return;
+            const motivo = prompt(error.message + '\nJustifique o override administrativo de capacidade:');
+            if (motivo?.trim() && confirm('Confirmar aluno acima da capacidade? A autorização ficará no histórico.')) {
+                await executarAcaoPipeline(resultado, {override_capacidade:true,motivo_capacidade:motivo.trim()});
+            }
+        }
+    }
 }
 
 async function loadUserInfo() {

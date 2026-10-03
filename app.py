@@ -47,6 +47,9 @@ app = _legacy.app
 from sge_academico import register_sge_academico
 from microsoft_integrations import register_microsoft_integrations
 
+from sge_vagas import register_vagas
+register_vagas(app, _legacy.get_db)
+
 register_sge_academico(app, _legacy.get_db)
 register_microsoft_integrations(app, _legacy.get_db, _legacy.criar_acao_pipeline)
 

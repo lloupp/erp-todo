@@ -1,0 +1,8 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vagas por período</title><link rel="stylesheet" href="/static/css/style.css"></head><body>
+{% set active_page='vagas' %}{% include '_sidebar.html' %}
+<main class="main-content" style="padding:24px"><h2>Vagas por período</h2><p>A ocupação inclui alunos confirmados com datas sobrepostas no período e modalidade. Registros antigos permanecem preservados.</p>
+<div id="vagas-erro" role="alert"></div><form id="vagas-novo" style="display:flex;gap:12px;flex-wrap:wrap">
+<label>Especialidade<input name="especialidade" required></label><label>Modalidade<input name="modalidade" required list="modalidades"></label><datalist id="modalidades"><option>Optativo</option><option>Convenio</option><option>Observership</option><option>Obrigatorio</option></datalist>
+<label>Início<input name="inicio" type="date" required></label><label>Término<input name="termino" type="date" required></label><label>Capacidade<input name="capacidade" type="number" min="0" step="1" required></label><button class="btn btn-primary">Cadastrar período</button></form>
+<div style="overflow:auto;margin-top:24px"><table><thead><tr><th>Especialidade</th><th>Modalidade</th><th>Período</th><th>Capacidade</th><th>Ocupadas</th><th>Disponíveis</th><th>Situação</th><th>Ação</th></tr></thead><tbody id="vagas-body"></tbody></table></div>
+</main><script src="/static/js/sge_vagas.js"></script></body></html>
