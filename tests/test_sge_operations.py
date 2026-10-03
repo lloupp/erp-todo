@@ -329,3 +329,14 @@ class SgeOperationsTests(unittest.TestCase):
         updated=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
         self.assertEqual((updated['previsto_centavos'],updated['status'],updated['versao']),(12500,'Link enviado',f['versao']))
         self.assertGreaterEqual(self.client.get('/api/pendencias').get_json()['res_pag_pendente'],1)
+
+    def test_upload_request_limit_returns_json(self):
+        self.login_admin()
+        self.assertEqual(self.module.app.config['MAX_CONTENT_LENGTH'],32*1024*1024)
+        rid=self.create()
+        d=self.client.post(f'/api/residentes/{rid}/documentos',json={'nome':'Tamanho'})
+        did=d.get_json()['id']
+        with patch.dict(self.module.app.config,{'MAX_CONTENT_LENGTH':1024}):
+            response=self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'%PDF-1.4'+b'x'*2048),'grande.pdf')})
+        self.assertEqual(response.status_code,413)
+        self.assertTrue(response.is_json)

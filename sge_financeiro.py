@@ -1,4 +1,5 @@
 """One financial process per student, with exact monetary amounts and audit."""
+from werkzeug.exceptions import RequestEntityTooLarge
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from flask import jsonify, request
@@ -157,6 +158,11 @@ def register_financeiro(app,get_db):
             db.rollback()
             if key: store.remove_uncommitted(key)
             return jsonify({'erro':str(exc)}),400
+        except RequestEntityTooLarge:
+            db.rollback()
+            if key:
+                store.remove_uncommitted(key)
+            raise
         except Exception:
             db.rollback()
             if key: store.remove_uncommitted(key)

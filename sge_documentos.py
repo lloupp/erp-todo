@@ -1,4 +1,5 @@
 """Document files, effective expiration and private authenticated downloads."""
+from werkzeug.exceptions import RequestEntityTooLarge
 from datetime import date
 from flask import jsonify, request, send_file
 from flask_login import current_user, login_required
@@ -24,7 +25,12 @@ def documentos_publicos(db,rid):
 
 
 def register_documentos(app,get_db):
-    app.config.setdefault('MAX_CONTENT_LENGTH',12*1024*1024)
+    if app.config.get('MAX_CONTENT_LENGTH') is None:
+        app.config['MAX_CONTENT_LENGTH']=32*1024*1024
+
+    @app.errorhandler(413)
+    def arquivo_muito_grande(error):
+        return jsonify({'erro':'Envio excede 32 MB. Documentos individuais permitem ate 8 MB.'}),413
 
     @app.route('/api/residentes/<int:rid>/documentos/<int:did>/arquivo',methods=['POST'])
     @login_required
@@ -53,6 +59,11 @@ def register_documentos(app,get_db):
             if key:
                 store.remove_uncommitted(key)
             return jsonify({'erro':str(exc)}),400
+        except RequestEntityTooLarge:
+            db.rollback()
+            if key:
+                store.remove_uncommitted(key)
+            raise
         except Exception:
             db.rollback()
             if key:

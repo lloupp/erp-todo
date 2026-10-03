@@ -51,6 +51,6 @@ Consulte [MICROSOFT_INTEGRATIONS.md](MICROSOFT_INTEGRATIONS.md) para os passos e
 
 A suíte cobre migrações vazias/legadas/idempotentes, concorrência da última vaga, pipeline, perfis, Forms duplicado, Outlook mockado, frequência/correções, arquivos privados/versões/expiração, financeiro/reembolso, gate e listas diárias. O fluxo completo até o registro de emissão/envio foi exercitado por APIs Flask, com banco temporário e checagem de integridade referencial.
 
-A instalação de Chromium falhou no ambiente (certificado de download e arquivo recebido inválido). **Não houve E2E em navegador real nem homologação visual desktop/mobile.** As telas foram renderizadas por Flask e o JavaScript validado sintaticamente. Essa homologação continua necessária.
+A instalação de Chromium falhou no ambiente (certificado de download e arquivo recebido inválido). **Não houve E2E em navegador real nem homologação visual desktop/mobile.** Foram aprovados 47 testes unitários/integração. As telas foram renderizadas por Flask e o JavaScript validado sintaticamente. Essa homologação continua necessária.
 
 O certificado atual registra emissão/envio manual, mas não gera um PDF acadêmico integrado nem envia esse PDF por Graph. Não confundir registro de envio com prova de entrega. Templates por modalidade, relatórios avançados, antifraude/antimalware de arquivos, trilha visual de auditoria e unificação do módulo histórico são trabalhos posteriores. O armazenamento suporta injeção de adapter; um provedor externo ainda não foi implementado/configurado.
