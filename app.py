@@ -47,6 +47,9 @@ app = _legacy.app
 from sge_academico import register_sge_academico
 from microsoft_integrations import register_microsoft_integrations
 
+from sge_financeiro import register_financeiro
+register_financeiro(app, _legacy.get_db)
+
 from sge_documentos import register_documentos
 register_documentos(app, _legacy.get_db)
 

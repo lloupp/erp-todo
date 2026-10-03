@@ -182,3 +182,42 @@ class SgeOperationsTests(unittest.TestCase):
         previous.close()
         self.assertEqual(self.client.delete(f'/api/residentes/{rid}/documentos/{did}',json={'motivo':'Requisito substituido'}).status_code,200)
         self.assertEqual(self.client.delete(f'/api/residentes/{rid}').status_code,409)
+
+    def test_financial_values_lifecycle_receipts_and_no_pipeline_advance(self):
+        self.login_admin(); rid=self.create(valor=1000)
+        f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        data={'versao':f['versao'],'valor_previsto':'1000.00','desconto':'100.00','status':'Aguardando pagamento','vencimento':(date.today()-timedelta(days=1)).isoformat()}
+        result=self.client.put(f'/api/residentes/{rid}/financeiro',json=data)
+        self.assertEqual(result.status_code,200,result.get_data(as_text=True)); f=result.get_json()
+        self.assertEqual((f['final_centavos'],f['status_efetivo']),(90000,'Vencido'))
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json=data).status_code,409)
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'desconto':1001}).status_code,400)
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Pago'}).status_code,400)
+        result=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Pago','data_pagamento':date.today().isoformat()})
+        self.assertEqual(result.status_code,200); f=result.get_json()
+        pipeline=self.client.get(f'/api/pipeline/residente/{rid}').get_json()
+        self.assertEqual([p['etapa'] for p in pipeline if p['situacao']=='pendente'],[1])
+        upload=self.client.post(f'/api/residentes/{rid}/financeiro/comprovante',data={'arquivo':(io.BytesIO(b'%PDF-1.4\nReceipt'),'comprovante.pdf')})
+        self.assertEqual(upload.status_code,201); f=upload.get_json()
+        self.assertEqual(self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Reembolsado','reembolso':1000,'observacao':'Solicitacao'}).status_code,400)
+        result=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Reembolsado','reembolso':'900.00','observacao':'Solicitacao do aluno'})
+        self.assertEqual(result.status_code,200,result.get_data(as_text=True))
+        self.assertEqual(result.get_json()['reembolso_centavos'],90000)
+        self.assertFalse(self.client.get(f'/api/residentes/{rid}/academico').get_json()['certificado']['apto'])
+
+    def test_role_boundaries_finance_and_read_only(self):
+        self.login_admin(); rid=self.create()
+        for role in ['atendimento','financeiro','somente_leitura','coordenacao']:
+            response=self.client.post('/api/usuarios',json={'username':role,'nome':role,'senha':'Role-Test-Password-123!','role':role})
+            self.assertEqual(response.status_code,201)
+        for role in ['atendimento','financeiro','somente_leitura','coordenacao']:
+            self.client.get('/logout')
+            self.client.post('/login',json={'username':role,'password':'Role-Test-Password-123!'},headers={'Accept':'application/json'})
+            self.assertEqual(self.client.get(f'/api/residentes/{rid}/financeiro').status_code,200)
+            f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+            r=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'valor_previsto':10})
+            self.assertEqual(r.status_code,200 if role=='financeiro' else 403)
+            if role in ['financeiro','somente_leitura']:
+                self.assertEqual(self.client.post(f'/api/residentes/{rid}/acao',json={'etapa':1,'resultado':'revisado'}).status_code,403)
+            if role=='somente_leitura':
+                self.assertEqual(self.client.post('/api/integracoes/outlook/enviar',json={'destinatario':'aluno@example.org','assunto':'Teste','mensagem':'Texto'}).status_code,403)

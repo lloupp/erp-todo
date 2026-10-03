@@ -64,7 +64,7 @@
                 <div class="form-group">
                     <label>Papel</label>
                     <select id="inp-role">
-                        <option value="user">Usuario</option>
+                        <option value="user">Usuário legado (atendimento)</option><option value="atendimento">Atendimento</option><option value="coordenacao">Coordenação</option><option value="financeiro">Financeiro</option><option value="somente_leitura">Somente leitura</option>
                         <option value="admin">Administrador</option>
                     </select>
                 </div>
@@ -167,7 +167,7 @@
                     <td>${u.id}</td>
                     <td>${esc(u.username)}</td>
                     <td>${esc(u.nome)}</td>
-                    <td><span class="badge ${u.role === 'admin' ? 'badge-obs' : 'badge-obr'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
+                    <td><span class="badge ${u.role === 'admin' ? 'badge-obs' : 'badge-obr'}">${esc(u.role)}</span></td>
                     <td style="font-size:.82rem;color:var(--color-text-secondary)">${fmtDate(u.last_login)}</td>
                     <td>
                         <button class="btn btn-sm" onclick="editarUsuario(${u.id},'${esc(u.username)}','${esc(u.nome)}','${u.role}')">Editar</button>

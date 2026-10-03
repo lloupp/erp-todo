@@ -1104,11 +1104,14 @@ def api_dashboard():
         f"{where_mes} GROUP BY especialidade ORDER BY cnt DESC LIMIT 15", params_mes
     ).fetchall()
 
-    res_financeiro = db.execute(
-        f"SELECT COALESCE(SUM(valor),0) as total, "
-        f"COALESCE(SUM(CASE WHEN status_pagamento='Pago' THEN valor ELSE 0 END),0) as pago "
-        f"FROM residentes{where_mes}", params_mes
-    ).fetchone()
+    from sge_financeiro import financeiro, PENDENTES
+    financeiros=[financeiro(db,r[0]) for r in db.execute(f'SELECT id FROM residentes{where_mes}',params_mes)]
+    res_financeiro={
+        'total':sum(f['final_centavos'] for f in financeiros if f['status']!='Cancelado')/100,
+        'pago':sum(f['final_centavos']-f['reembolso_centavos'] for f in financeiros if f['status'] in {'Pago','Reembolsado'})/100,
+        'pendente':sum(f['final_centavos'] for f in financeiros if f['status_efetivo'] in PENDENTES)/100,
+        'reembolsado':sum(f['reembolso_centavos'] for f in financeiros)/100,
+    }
 
     # Tendência mensal — últimos 18 meses (sem filtro de mês, sempre geral)
     res_por_mes = db.execute('''
@@ -1160,14 +1163,15 @@ def api_dashboard():
         'financeiro': {
             'total': res_financeiro['total'] or 0,
             'pago': res_financeiro['pago'] or 0,
-            'pendente': (res_financeiro['total'] or 0) - (res_financeiro['pago'] or 0),
+            'pendente': res_financeiro['pendente'],
+            'reembolsado': res_financeiro['reembolsado'],
         },
         'kpis': {
             'novos': res_kpis['novos'] or 0,
             'em_andamento': res_kpis['em_andamento'] or 0,
             'deferidos': res_kpis['deferidos'] or 0,
             'confirmados': res_kpis['confirmados'] or 0,
-            'pag_pendente': res_kpis['pag_pendente'] or 0,
+            'pag_pendente': sum(f['status_efetivo'] in PENDENTES for f in financeiros),
             'criticos': res_kpis['criticos'] or 0,
             'alertas': res_kpis['alertas'] or 0,
         },
@@ -1848,6 +1852,8 @@ def api_criar_usuario():
     nome = data.get('nome', '').strip()
     senha = data.get('senha', '')
     role = data.get('role', 'user')
+    if role not in {'admin','user','atendimento','coordenacao','financeiro','somente_leitura'}:
+        return jsonify({'erro':'Perfil invalido.'}),400
     if not username or not nome or not senha:
         return jsonify({'erro': 'Preencha todos os campos obrigatorios'}), 400
     existing = db.execute('SELECT id FROM usuarios WHERE username=?', (username,)).fetchone()
@@ -1873,6 +1879,8 @@ def api_editar_usuario(user_id):
         return jsonify({'erro': 'Usuario nao encontrado'}), 404
     nome = data.get('nome', existing['nome'])
     role = data.get('role', existing['role'])
+    if role not in {'admin','user','atendimento','coordenacao','financeiro','somente_leitura'}:
+        return jsonify({'erro':'Perfil invalido.'}),400
     username = data.get('username', existing['username'])
     # Check username conflict
     dup = db.execute('SELECT id FROM usuarios WHERE username=? AND id!=?', (username, user_id)).fetchone()
@@ -2288,7 +2296,8 @@ def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, obse
 
     # Guardas de negocio: impedem que o pipeline "pule" requisitos objetivos.
     if etapa_atual == 7 and resultado == 'comprovante_ok':
-        if residente['status_pagamento'] not in ('Pago', 'Isento'):
+        from sge_financeiro import financeiro
+        if financeiro(db,residente_id)['status_efetivo'] not in ('Pago', 'Isento'):
             raise ValueError(
                 'Pagamento ainda nao esta confirmado. Marque como Pago ou Isento antes de confirmar a etapa 7.'
             )
@@ -2342,6 +2351,9 @@ def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, obse
                VALUES (?,?,?,?)""",
             (residente_id, novo_status, observacao or f'[Pipeline] {resultado}', responsavel),
         )
+
+    from sge_financeiro import sincronizar_pipeline
+    sincronizar_pipeline(db,residente_id,etapa_atual,resultado)
 
     if proxima_etapa:
         criar_acao_pipeline(db, residente_id, proxima_etapa)
@@ -2759,7 +2771,8 @@ def api_delete_residente(rid):
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
     if (db.execute('SELECT 1 FROM residente_frequencias WHERE residente_id=?',(rid,)).fetchone()
-            or db.execute('SELECT 1 FROM residente_documentos WHERE residente_id=?',(rid,)).fetchone()):
+            or db.execute('SELECT 1 FROM residente_documentos WHERE residente_id=?',(rid,)).fetchone()
+            or db.execute('SELECT 1 FROM residente_financeiro WHERE residente_id=?',(rid,)).fetchone()):
         return jsonify({'erro':'Aluno com frequencia nao pode ser excluido; preserve o historico.'}),409
     db.execute('DELETE FROM pipeline_acoes WHERE residente_id=?', (rid,))
     db.execute('DELETE FROM historico_residentes WHERE residente_id=?', (rid,))

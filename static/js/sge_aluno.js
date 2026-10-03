@@ -68,3 +68,32 @@ document.getElementById('documentos-body').addEventListener('click',async event=
     } catch(error) {sgeErro(error);} finally {button.disabled=false;}
 });
 carregarDocumentos().catch(sgeErro);
+
+let sgeFinanceiro=null;
+async function carregarFinanceiro() {
+    const f=await sgeApi(`/api/residentes/${sgeRid}/financeiro`); sgeFinanceiro=f;
+    document.getElementById('financeiro-resumo').textContent=`${f.status_efetivo} — valor final: R$ ${(f.final_centavos/100).toFixed(2)} — responsável: ${f.responsavel||'—'}`;
+    const form=document.getElementById('financeiro-form');
+    const values={valor_previsto:f.previsto_centavos/100,desconto:f.desconto_centavos/100,reembolso:f.reembolso_centavos/100,status:f.status,vencimento:f.vencimento||'',data_pagamento:f.data_pagamento||'',observacao:f.observacao||''};
+    for(const [key,value] of Object.entries(values)) form.elements[key].value=value;
+    document.getElementById('financeiro-arquivo').innerHTML=f.comprovante_url?`<a href="${se(f.comprovante_url)}">Baixar comprovante</a>`:'Sem comprovante anexado';
+    const me=await sgeApi('/api/me');
+    for(const id of ['financeiro-form','financeiro-comprovante']) for(const input of document.getElementById(id).elements) input.disabled=!['admin','financeiro'].includes(me.role);
+}
+document.getElementById('financeiro-form').addEventListener('submit',async event=>{
+    event.preventDefault();
+    try {
+        const d=Object.fromEntries(new FormData(event.target)); d.versao=sgeFinanceiro.versao;
+        await sgeApi(`/api/residentes/${sgeRid}/financeiro`,{method:'PUT',body:JSON.stringify(d)});
+        await carregarFinanceiro(); await carregarDocumentos();
+    } catch(error) {sgeErro(error);}
+});
+document.getElementById('financeiro-comprovante').addEventListener('submit',async event=>{
+    event.preventDefault();
+    try {
+        const response=await fetch(`/api/residentes/${sgeRid}/financeiro/comprovante`,{method:'POST',body:new FormData(event.target)});
+        const data=await response.json(); if(!response.ok) throw new Error(data.erro||'Falha no upload');
+        event.target.reset(); await carregarFinanceiro();
+    } catch(error) {sgeErro(error);}
+});
+carregarFinanceiro().catch(sgeErro);

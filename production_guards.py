@@ -36,6 +36,13 @@ def install_production_guards(app) -> None:
             origin = request.headers.get('Origin')
             if origin and urlsplit(origin).netloc != request.host:
                 return jsonify({'erro': 'Origem da requisicao nao permitida'}), 403
+            role=current_user.role
+            if request.path.startswith('/api/') and role not in {'admin','user','atendimento','coordenacao','financeiro','somente_leitura'}:
+                return jsonify({'erro':'Perfil sem permissao operacional.'}),403
+            if role == 'financeiro' and request.path.startswith('/api/') and '/financeiro' not in request.path:
+                return jsonify({'erro':'Perfil financeiro restrito ao modulo financeiro.'}),403
+            if '/pago' in request.path and role not in {'admin','financeiro'}:
+                return jsonify({'erro':'Pagamento exige financeiro ou administrador.'}),403
             if current_user.role == 'somente_leitura' and request.path.startswith('/api/'):
                 return jsonify({'erro': 'Perfil somente leitura'}), 403
         if not request.path.startswith(ADMIN_MUTATION_PREFIXES):

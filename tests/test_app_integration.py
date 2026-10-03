@@ -507,12 +507,9 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertEqual(unpaid.status_code, 400)
         self.assertIn('pagamento', unpaid.get_json()['erro'].lower())
 
-        with sqlite3.connect(self.db_path) as db:
-            db.execute(
-                "UPDATE residentes SET status_pagamento='Pago' WHERE id=?",
-                (rid,),
-            )
-            db.commit()
+        f=self.client.get(f'/api/residentes/{rid}/financeiro').get_json()
+        payment=self.client.put(f'/api/residentes/{rid}/financeiro',json={'versao':f['versao'],'status':'Pago','data_pagamento':date.today().isoformat()})
+        self.assertEqual(payment.status_code,200,payment.get_data(as_text=True))
 
         self.approve_document(rid)
         confirmed = self.client.post(
