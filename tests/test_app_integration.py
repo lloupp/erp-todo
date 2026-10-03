@@ -194,6 +194,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.login_admin()
         created = self.client.post('/api/residentes', json={
             'nome': 'Aluno Academico',
+            'termino': (date.today() - timedelta(days=1)).isoformat(),
             'especialidade': 'Cardiologia',
             'mes_ano': '2026-11',
             'tipo': 'Doutorando',

@@ -6,6 +6,8 @@ Certificate eligibility is derived from objective persisted requirements.
 
 from __future__ import annotations
 
+import math
+
 from flask import jsonify, request
 from flask_login import current_user, login_required
 
@@ -20,7 +22,7 @@ def _number(value, field):
         number = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field} deve ser numerico") from exc
-    if number < 0:
+    if not math.isfinite(number) or number < 0:
         raise ValueError(f"{field} nao pode ser negativo")
     return number
 
@@ -37,6 +39,8 @@ def avaliar_certificado(residente, documentos):
 
     prevista = float(residente["carga_horaria_prevista"] or 0)
     realizada = float(residente["carga_horaria_realizada"] or 0)
+    if not math.isfinite(prevista) or not math.isfinite(realizada):
+        motivos.append("Carga horaria invalida.")
     if prevista <= 0:
         motivos.append("Carga horaria prevista nao informada.")
     elif realizada < prevista:
