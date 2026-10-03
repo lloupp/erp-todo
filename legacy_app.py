@@ -2752,6 +2752,8 @@ def api_delete_residente(rid):
     db = get_db()
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
+    if db.execute('SELECT 1 FROM residente_frequencias WHERE residente_id=?',(rid,)).fetchone():
+        return jsonify({'erro':'Aluno com frequencia nao pode ser excluido; preserve o historico.'}),409
     db.execute('DELETE FROM pipeline_acoes WHERE residente_id=?', (rid,))
     db.execute('DELETE FROM historico_residentes WHERE residente_id=?', (rid,))
     db.execute('DELETE FROM residentes WHERE id=?', (rid,))

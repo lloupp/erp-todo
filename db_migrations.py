@@ -124,6 +124,23 @@ def ensure_database(
                 applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS residente_frequencias (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                residente_id INTEGER NOT NULL REFERENCES residentes(id) ON DELETE RESTRICT,
+                data DATE,
+                horas REAL NOT NULL CHECK(horas>=0),
+                presenca TEXT NOT NULL CHECK(presenca IN ('Presente','Ausente','Ausência justificada','Saldo legado')),
+                observacao TEXT,
+                responsavel TEXT NOT NULL,
+                versao INTEGER NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(residente_id,data),
+                CHECK((presenca='Saldo legado' AND data IS NULL) OR (presenca!='Saldo legado' AND data IS NOT NULL)),
+                CHECK(presenca IN ('Presente','Saldo legado') OR horas=0)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_frequencia_saldo_legado
+                ON residente_frequencias(residente_id) WHERE data IS NULL;
+
             CREATE TABLE IF NOT EXISTS vagas_periodos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 especialidade TEXT NOT NULL,
@@ -353,6 +370,15 @@ def ensure_database(
             ('origem', 'TEXT'),
             ('origem_ref', 'TEXT'),
         ])
+
+        if not db.execute("SELECT 1 FROM schema_migrations WHERE name='sge_frequencia_v1'").fetchone():
+            import math
+            for rid, total in db.execute('SELECT id,carga_horaria_realizada FROM residentes WHERE carga_horaria_realizada IS NOT NULL'):
+                if not math.isfinite(float(total)) or float(total)<0:
+                    raise RuntimeError(f'Carga horaria legada invalida no residente {rid}; revise sem apagar registros.')
+                if float(total)>0:
+                    db.execute("INSERT INTO residente_frequencias(residente_id,data,horas,presenca,responsavel,observacao) VALUES (?,NULL,?,'Saldo legado','Migracao','Total anterior preservado; sem inferir datas de presenca.')",(rid,total))
+            db.execute("INSERT INTO schema_migrations(name) VALUES ('sge_frequencia_v1')")
 
         _add_missing_columns(db, 'pipeline_acoes', [
             ('prazo_em', 'DATE'),

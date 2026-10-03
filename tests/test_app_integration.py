@@ -196,7 +196,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.login_admin()
         created = self.client.post('/api/residentes', json={
             'nome': 'Aluno Academico',
-            'inicio': (date.today() - timedelta(days=10)).isoformat(),
+            'inicio': (date.today() - timedelta(days=20)).isoformat(),
             'termino': (date.today() - timedelta(days=1)).isoformat(),
             'especialidade': 'Cardiologia',
             'mes_ano': '2026-11',
@@ -214,10 +214,15 @@ class AppIntegrationTests(unittest.TestCase):
 
         hours = self.client.put(f'/api/residentes/{rid}/academico', json={
             'carga_horaria_prevista': 80,
-            'carga_horaria_realizada': 80,
         })
         self.assertEqual(hours.status_code, 200, hours.get_data(as_text=True))
         self.assertFalse(hours.get_json()['certificado']['apto'])
+
+        for offset in range(1,5):
+            presence = self.client.post(f'/api/residentes/{rid}/frequencia', json={
+                'data': (date.today()-timedelta(days=offset)).isoformat(),
+                'horas': 20, 'presenca': 'Presente'})
+            self.assertEqual(presence.status_code,201,presence.get_data(as_text=True))
 
         document = self.client.post(f'/api/residentes/{rid}/documentos', json={
             'nome': 'Documento de identificacao',
@@ -252,7 +257,7 @@ class AppIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(sent.get_json()['certificado']['certificado_enviado_em'])
 
         deleted = self.client.delete(f'/api/residentes/{rid}')
-        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.status_code, 409)
 
 
     def test_microsoft_forms_webhook_is_idempotent_and_enters_triage(self):
