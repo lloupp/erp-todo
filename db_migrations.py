@@ -330,6 +330,19 @@ def ensure_database(
             CREATE INDEX IF NOT EXISTS idx_residente_documentos_status
                 ON residente_documentos(residente_id, obrigatorio, status);
 
+            CREATE TABLE IF NOT EXISTS sge_arquivos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                residente_id INTEGER NOT NULL REFERENCES residentes(id) ON DELETE RESTRICT,
+                documento_id INTEGER REFERENCES residente_documentos(id) ON DELETE RESTRICT,
+                storage_key TEXT UNIQUE NOT NULL,
+                nome TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                tamanho INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                enviado_por TEXT NOT NULL,
+                enviado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS integracao_eventos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 provider TEXT NOT NULL,
@@ -379,6 +392,13 @@ def ensure_database(
                 if float(total)>0:
                     db.execute("INSERT INTO residente_frequencias(residente_id,data,horas,presenca,responsavel,observacao) VALUES (?,NULL,?,'Saldo legado','Migracao','Total anterior preservado; sem inferir datas de presenca.')",(rid,total))
             db.execute("INSERT INTO schema_migrations(name) VALUES ('sge_frequencia_v1')")
+
+        _add_missing_columns(db,'residente_documentos',[
+            ('arquivo_id','INTEGER REFERENCES sge_arquivos(id)'),
+            ('enviado_em','DATETIME'),('aprovado_em','DATETIME'),
+            ('aprovado_por','TEXT'),('validade','DATE'),('arquivado_em','DATETIME'),
+        ])
+        db.execute("INSERT OR IGNORE INTO schema_migrations(name) VALUES ('sge_documentos_arquivos_v1')")
 
         _add_missing_columns(db, 'pipeline_acoes', [
             ('prazo_em', 'DATE'),

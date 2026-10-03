@@ -12,6 +12,7 @@ class SgeOperationsTests(unittest.TestCase):
     tearDownClass = classmethod(integration.AppIntegrationTests.tearDownClass.__func__)
     setUp = integration.AppIntegrationTests.setUp
     login_admin = integration.AppIntegrationTests.login_admin
+    approve_document = integration.AppIntegrationTests.approve_document
 
     def create(self, **extra):
         response = self.client.post('/api/residentes', json={
@@ -91,6 +92,8 @@ class SgeOperationsTests(unittest.TestCase):
             'inicio':start,'termino':end,'capacidade':1})
         self.assertEqual(p.status_code,201)
         ids=[self.create(especialidade='Neurocirurgia',inicio=start,termino=end,status_pagamento='Pago') for _ in range(2)]
+        for rid in ids:
+            self.approve_document(rid)
         with sqlite3.connect(self.db_path) as db:
             for rid in ids:
                 db.execute("UPDATE pipeline_acoes SET etapa=7,acao_tipo='analisar_comprovante' WHERE residente_id=?",(rid,))
@@ -141,3 +144,41 @@ class SgeOperationsTests(unittest.TestCase):
             with sqlite3.connect(path) as db:
                 self.assertEqual(db.execute('SELECT SUM(horas),COUNT(*) FROM residente_frequencias WHERE residente_id=1').fetchone(),(42,1))
                 self.assertEqual(db.execute('SELECT carga_horaria_realizada FROM residentes WHERE id=1').fetchone()[0],42)
+
+    def test_documents_files_expiration_and_private_download(self):
+        self.login_admin()
+        rid=self.create()
+        doc=self.client.post(f'/api/residentes/{rid}/documentos',json={'nome':'Identificacao','obrigatorio':True})
+        did=doc.get_json()['id']
+        payload={'id':did,'nome':'Identificacao','obrigatorio':True,'status':'Aprovado'}
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/documentos',json=payload).status_code,409)
+        upload=self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'%PDF-1.4\nPrivate test'),'../../arquivo.pdf')})
+        self.assertEqual(upload.status_code,201,upload.get_data(as_text=True))
+        aid=upload.get_json()['id']
+        self.assertNotIn('storage_key',upload.get_data(as_text=True))
+        payload['arquivo_id']=aid
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/documentos',json=payload).status_code,200)
+        download=self.client.get(f'/api/sge/arquivos/{aid}')
+        self.assertEqual(download.status_code,200)
+        self.assertIn('attachment',download.headers['Content-Disposition'])
+        self.assertEqual(download.headers['Cache-Control'],'private, no-store')
+        download.close()
+        self.client.get('/logout')
+        self.assertEqual(self.client.get(f'/api/sge/arquivos/{aid}').status_code,302)
+        self.login_admin()
+        with sqlite3.connect(self.db_path) as db:
+            db.execute('UPDATE residente_documentos SET validade=? WHERE id=?',((date.today()-timedelta(days=1)).isoformat(),did))
+        docs=self.client.get(f'/api/residentes/{rid}/academico').get_json()
+        self.assertEqual(docs['documentos'][0]['status'],'Expirado')
+        self.assertFalse(docs['certificado']['apto'])
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'<script>bad</script>'),'arquivo.pdf')}).status_code,400)
+        # Replacing a file resets approval; approval of the stale version is rejected.
+        replacement=self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'%PDF-1.4\nNew'),'arquivo.pdf')})
+        self.assertEqual(replacement.status_code,201)
+        payload['validade']=None
+        self.assertEqual(self.client.post(f'/api/residentes/{rid}/documentos',json=payload).status_code,409)
+        previous=self.client.get(f'/api/sge/arquivos/{aid}')
+        self.assertEqual(previous.status_code,200)
+        previous.close()
+        self.assertEqual(self.client.delete(f'/api/residentes/{rid}/documentos/{did}',json={'motivo':'Requisito substituido'}).status_code,200)
+        self.assertEqual(self.client.delete(f'/api/residentes/{rid}').status_code,409)

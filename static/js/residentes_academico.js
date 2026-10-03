@@ -2,6 +2,7 @@
 'use strict';
 
 let academicoResidenteId = null;
+let documentosAcademicosCache = [];
 
 async function abrirAcademico(id, nome) {
     academicoResidenteId = id;
@@ -73,6 +74,7 @@ function formatarDataHora(valor) {
 }
 
 function renderDocumentosAcademicos(documentos) {
+    documentosAcademicosCache = documentos;
     const tbody = document.getElementById('academico-docs-body');
     if (!documentos.length) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--color-text-secondary);padding:14px;">Nenhum documento cadastrado.</td></tr>';
@@ -84,14 +86,14 @@ function renderDocumentosAcademicos(documentos) {
             <td style="text-align:center;"><input id="doc-obrigatorio-${d.id}" type="checkbox" ${d.obrigatorio ? 'checked' : ''}></td>
             <td>
                 <select id="doc-status-${d.id}">
-                    ${['Pendente','Recebido','Aprovado','Rejeitado'].map(s => `<option ${s===d.status?'selected':''}>${s}</option>`).join('')}
+                    ${['Pendente','Recebido','Aprovado','Rejeitado','Expirado'].map(s => `<option ${s===d.status?'selected':''}>${s}</option>`).join('')}
                 </select>
             </td>
             <td><input id="doc-obs-${d.id}" value="${esc(d.observacao || '')}" placeholder="Observação" style="width:100%;min-width:130px;"></td>
             <td style="font-size:11px;color:var(--color-text-secondary);">${esc(d.atualizado_por || '—')}</td>
             <td style="white-space:nowrap;">
                 <button class="btn btn-sm btn-primary" onclick="salvarDocumentoAcademico(${d.id})">Salvar</button>
-                <button class="btn btn-sm btn-danger" onclick="removerDocumentoAcademico(${d.id})">Excluir</button>
+                <button class="btn btn-sm btn-danger" onclick="removerDocumentoAcademico(${d.id})">Arquivar</button>
             </td>
         </tr>`).join('');
 }
@@ -141,6 +143,7 @@ async function salvarDocumentoAcademico(id) {
             method: 'POST',
             body: JSON.stringify({
                 id,
+                arquivo_id: documentosAcademicosCache.find(d => d.id === id)?.arquivo_id,
                 nome: document.getElementById(`doc-nome-${id}`).value.trim(),
                 obrigatorio: document.getElementById(`doc-obrigatorio-${id}`).checked,
                 status: document.getElementById(`doc-status-${id}`).value,
@@ -153,9 +156,10 @@ async function salvarDocumentoAcademico(id) {
 }
 
 async function removerDocumentoAcademico(id) {
-    if (!window.confirm('Excluir este documento do checklist?')) return;
+    const motivo = prompt('Justifique o arquivamento deste requisito (exige administrador):');
+    if (!motivo?.trim()) return;
     try {
-        await apiFetch(`/api/residentes/${academicoResidenteId}/documentos/${id}`, {method:'DELETE'});
+        await apiFetch(`/api/residentes/${academicoResidenteId}/documentos/${id}`, {method:'DELETE',body:JSON.stringify({motivo:motivo.trim()})});
         showToast('Documento removido', 'success');
         await carregarAcademico();
     } catch (_) {}

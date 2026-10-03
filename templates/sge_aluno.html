@@ -5,4 +5,7 @@
 <label>Data<input name="data" type="date" required></label><label>Situação<select name="presenca"><option>Presente</option><option>Ausente</option><option>Ausência justificada</option></select></label>
 <label>Horas<input name="horas" type="number" min="0" max="24" step="0.25" required></label><label>Observação<input name="observacao" maxlength="2000"></label><button class="btn btn-primary">Salvar frequência</button><button type="reset" class="btn">Limpar edição</button></form>
 <p>Selecione Corrigir para alterar um lançamento. O saldo legado preserva horas anteriores sem inventar datas.</p><div style="overflow:auto"><table><thead><tr><th>Data</th><th>Situação</th><th>Horas</th><th>Observação</th><th>Responsável</th><th>Ação</th></tr></thead><tbody id="frequencia-body"></tbody></table></div></section>
+<section style="margin-top:24px"><h3>Documentos e arquivos</h3><p id="documentos-gate"></p>
+<form id="documentos-novo"><label>Tipo/nome<input name="nome" required></label><label><input name="obrigatorio" type="checkbox" checked>Obrigatório</label><button class="btn btn-primary">Adicionar requisito</button></form>
+<div style="overflow:auto"><table><thead><tr><th>Documento</th><th>Status</th><th>Validade</th><th>Arquivo</th><th>Observação</th><th>Aprovação</th><th>Ação</th></tr></thead><tbody id="documentos-body"></tbody></table></div></section>
 </main><script src="/static/js/sge_aluno.js"></script></body></html>

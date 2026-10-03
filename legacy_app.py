@@ -2293,6 +2293,12 @@ def avancar_pipeline(db, residente_id, etapa_atual, resultado, responsavel, obse
                 'Pagamento ainda nao esta confirmado. Marque como Pago ou Isento antes de confirmar a etapa 7.'
             )
 
+    if etapa_atual == 7 and resultado == 'comprovante_ok':
+        from sge_documentos import documentos_publicos
+        obrigatorios = [d for d in documentos_publicos(db,residente_id) if d['obrigatorio']]
+        if not obrigatorios or any(d['status']!='Aprovado' or not d['arquivo_id'] for d in obrigatorios):
+            raise ValueError('Configure e aprove os arquivos dos documentos obrigatorios antes da validacao.')
+
     if etapa_atual == 8 and resultado == 'enviado':
         if not residente['inicio'] or not residente['termino']:
             raise ValueError(
@@ -2752,7 +2758,8 @@ def api_delete_residente(rid):
     db = get_db()
     if not db.execute('SELECT id FROM residentes WHERE id=?', (rid,)).fetchone():
         return jsonify({'erro': 'Nao encontrado'}), 404
-    if db.execute('SELECT 1 FROM residente_frequencias WHERE residente_id=?',(rid,)).fetchone():
+    if (db.execute('SELECT 1 FROM residente_frequencias WHERE residente_id=?',(rid,)).fetchone()
+            or db.execute('SELECT 1 FROM residente_documentos WHERE residente_id=?',(rid,)).fetchone()):
         return jsonify({'erro':'Aluno com frequencia nao pode ser excluido; preserve o historico.'}),409
     db.execute('DELETE FROM pipeline_acoes WHERE residente_id=?', (rid,))
     db.execute('DELETE FROM historico_residentes WHERE residente_id=?', (rid,))
