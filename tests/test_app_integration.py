@@ -1,3 +1,4 @@
+import gc
 import io
 import importlib
 import os
@@ -35,6 +36,8 @@ class AppIntegrationTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # `with sqlite3.connect()` only commits; collect leaked handles so Windows can delete the file.
+        gc.collect()
         cls.tmp.cleanup()
         for key in (
             'ERP_DATABASE', 'BOOTSTRAP_ADMIN_PASSWORD',

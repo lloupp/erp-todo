@@ -1,3 +1,4 @@
+import gc
 import io
 import os
 import sqlite3
@@ -145,6 +146,8 @@ class SgeOperationsTests(unittest.TestCase):
             with sqlite3.connect(path) as db:
                 self.assertEqual(db.execute('SELECT SUM(horas),COUNT(*) FROM residente_frequencias WHERE residente_id=1').fetchone(),(42,1))
                 self.assertEqual(db.execute('SELECT carga_horaria_realizada FROM residentes WHERE id=1').fetchone()[0],42)
+            del db
+            gc.collect()
 
     def test_documents_files_expiration_and_private_download(self):
         self.login_admin()
@@ -229,8 +232,27 @@ class SgeOperationsTests(unittest.TestCase):
             db.execute("UPDATE pipeline_acoes SET prazo_em=?,prioridade=2,bloqueado=1,bloqueio_motivo='Aguardando chefe' WHERE residente_id=?",((date.today()-timedelta(days=1)).isoformat(),rid))
         response=self.client.get('/api/sge/hoje'); self.assertEqual(response.status_code,200)
         groups={c['id']:c for c in response.get_json()['categorias']}
-        for key in ['atrasadas','urgentes','bloqueadas','sem_responsavel','novas_inscricoes','pagamentos','documentos']:
+        for key in ['atrasadas','urgentes','bloqueadas','sem_responsavel','novas_inscricoes']:
             self.assertIn(rid,[i['id'] for i in groups[key]['items']])
+        # Triagem ainda nao cobra pagamento nem documentos: so apos o deferimento.
+        for key in ['pagamentos','documentos']:
+            self.assertNotIn(rid,[i['id'] for i in groups[key]['items']])
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE residentes SET status='Deferido' WHERE id=?",(rid,))
+        groups={c['id']:c for c in self.client.get('/api/sge/hoje').get_json()['categorias']}
+        for key in ['pagamentos','documentos']:
+            self.assertIn(rid,[i['id'] for i in groups[key]['items']])
+        # Cancelado sem cobranca emitida nao gera revisao financeira; com link enviado, gera.
+        def pagamentos():
+            return [i['id'] for i in self.client.get('/api/sge/hoje?categoria=pagamentos').get_json()['categorias'][0]['items']]
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE residentes SET status='Cancelado' WHERE id=?",(rid,))
+        self.assertNotIn(rid,pagamentos())
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE residentes SET status_pagamento='Link enviado' WHERE id=?",(rid,))
+        self.assertIn(rid,pagamentos())
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE residentes SET status='Deferido',status_pagamento='Pendente' WHERE id=?",(rid,))
         item=next(i for i in groups['atrasadas']['items'] if i['id']==rid)
         self.assertIn('/residentes?acao=',item['url'])
         self.assertEqual(self.client.get(item['url']).status_code,200)

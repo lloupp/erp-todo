@@ -15,6 +15,11 @@ CATEGORIAS=[
  ('iniciando','Iniciando nos próximos 7 dias'),('terminando','Terminando estágio / conclusão pendente'),
  ('certificados_aptos','Certificados aptos para emissão'),('certificados_enviar','Certificados emitidos ainda não enviados')]
 ENCERRADOS={'Concluído','Cancelado','Desistente','Indeferido','Nao veio'}
+# Financeiro e documentos so sao cobrados apos o deferimento (etapa 5 em diante).
+# Antes disso todo aluno em triagem apareceria como "pendente" e esconderia o que importa.
+FASE_FINANCEIRA={'Deferido','Confirmado'}
+# Cancelamento so exige revisao financeira se a cobranca chegou ao aluno.
+COBRANCA_EMITIDA={'Link enviado','Aguardando pagamento','Vencido','Pago'}
 
 
 def central(db):
@@ -44,13 +49,14 @@ def central(db):
               'prioridade':0,'responsavel':None,'url':f'/sge/residentes/{rid}'}
         f=financeiro(db,rid)
         docs=documentos_publicos(db,rid)
-        ativos=r['status'] not in ENCERRADOS
-        if (ativos and f['status_efetivo'] in PENDENTES) or (r['status']=='Cancelado' and f['status_efetivo'] in PENDENTES|{'Pago'}):
+        # Concluidos continuam cobrados ate o certificado ser enviado: pendencias bloqueiam o gate.
+        cobravel=r['status'] in FASE_FINANCEIRA or (r['status']=='Concluído' and not r['certificado_enviado_em'])
+        if (cobravel and f['status_efetivo'] in PENDENTES) or (r['status']=='Cancelado' and f['status_efetivo'] in COBRANCA_EMITIDA):
             grupos['pagamentos'].append({**base,'prazo':f['vencimento'],'prioridade':2 if f['status_efetivo']=='Vencido' else 0,
                  'responsavel':f['responsavel'],'detalhe':('Estágio cancelado: revisar cancelamento financeiro/reembolso — ' if r['status']=='Cancelado' else '')+f"{f['status_efetivo']} — R$ {f['final_centavos']/100:.2f}",'url':base['url']+'#financeiro'})
         obrigatorios=[d for d in docs if d['obrigatorio']]
         faltantes=[d['nome'] for d in obrigatorios if d['status']!='Aprovado' or not d['arquivo_id']]
-        if ativos and (not obrigatorios or faltantes):
+        if cobravel and (not obrigatorios or faltantes):
             grupos['documentos'].append({**base,'detalhe':', '.join(faltantes) if obrigatorios else 'Configure o checklist obrigatório', 'url':base['url']+'#documentos'})
         if r['status']=='Confirmado' and r['inicio'] and hoje<=r['inicio']<=sete:
             grupos['iniciando'].append({**base,'prazo':r['inicio'],'detalhe':'Conferir início, documentos e orientações'})
