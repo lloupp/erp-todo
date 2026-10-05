@@ -12,6 +12,7 @@ let residentesCache = {};   // id -> registro (ultima pagina carregada), usado p
 let AREA_MEDICA = null;     // cache dos contatos de chefes de servico
 let MENSAGENS_MODELO = {};  // chave -> texto do modelo (editavel em /configuracoes)
 let USUARIO_LOGADO_NOME = '';
+let USUARIO_LOGADO_ROLE = 'somente_leitura';
 
 const STATUS_FLOW = [
     'Interessado', 'Em andamento', 'Deferido', 'Confirmado'
@@ -61,6 +62,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     loadResidentes();
     loadWelcomeBanner();
+    try {
+        if (urlParams.has('acao') || urlParams.has('aluno')) {
+            const fila = await apiFetch('/api/pipeline/fila');
+            const acao = urlParams.has('acao')
+                ? fila.find(a => a.acao_id === Number(urlParams.get('acao')))
+                : fila.find(a => a.residente_id === Number(urlParams.get('aluno')));
+            if (acao) await abrirModalPipelineAcao(acao);
+            else showToast('A ação já foi concluída ou não está disponível. Atualize a Central do Dia.', 'info');
+        }
+        if (urlParams.has('academico')) {
+            const id = Number(urlParams.get('academico'));
+            const data = await apiFetch(`/api/residentes/${id}/academico`);
+            await abrirAcademico(id,data.residente.nome);
+        }
+    } catch (_) {}
 });
 
 async function carregarMensagensModelo() {
@@ -176,13 +192,19 @@ const PIPELINE_ETAPAS_INFO = {
              { resultado: 'falta_documento', label: 'Falta documento', classe: 'btn-secondary' },
          ] },
     8: { titulo: 'Orientações para o 1º dia', tipoMensagem: 'orientacoes',
-         resultados: [{ resultado: 'enviado', label: 'Enviar orientações', classe: 'btn-primary' }] },
+         resultados: [{ resultado: 'enviado', label: 'Orientações enviadas', classe: 'btn-primary' }] },
+    9: { titulo: 'Concluir estágio',
+         resultados: [
+             { resultado: 'concluido', label: 'Estágio concluído', classe: 'btn-primary' },
+             { resultado: 'nao_veio', label: 'Não compareceu', classe: 'btn-secondary' },
+             { resultado: 'cancelado', label: 'Cancelado', classe: 'btn-danger' },
+         ] },
 };
 
 const INPUT_STYLE = 'width:100%;height:36px;padding:0 10px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;';
 const TEXTAREA_STYLE = 'width:100%;padding:8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);color:var(--color-text);margin-top:4px;font-family:inherit;font-size:13px;';
 
-let pipelineAcaoAtual = null; // { residenteId, etapa, telefone }
+let pipelineAcaoAtual = null; // { residente, etapa, telefoneDestino, emailDestino }
 
 function togglePipelineFila() {
     const lista = document.getElementById('pipeline-fila-lista');
@@ -197,43 +219,61 @@ async function carregarPipelineFila() {
     const painel = document.getElementById('pipeline-fila-panel');
     if (!painel) return;
     try {
-        const fila = await apiFetch('/api/pipeline/fila');
+        const [fila, resumo] = await Promise.all([
+            apiFetch('/api/pipeline/fila'),
+            apiFetch('/api/pipeline/dashboard'),
+        ]);
         if (!fila.length) { painel.style.display = 'none'; return; }
         painel.style.display = 'block';
+
+        const prioridadeLabel = p => p === 2 ? 'URGENTE' : p === 1 ? 'ALTA' : 'NORMAL';
+        const prioridadeBg = p => p === 2 ? '#fee2e2' : p === 1 ? '#fef3c7' : '#f3f4f6';
+        const prioridadeColor = p => p === 2 ? '#991b1b' : p === 1 ? '#92400e' : '#4b5563';
+
         const lista = document.getElementById('pipeline-fila-lista');
-        lista.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
-            <thead><tr style="text-align:left;">
-                <th style="padding:6px;">Residente</th><th>Especialidade</th><th>Etapa</th><th>Parado há</th><th></th>
-            </tr></thead>
-            <tbody>${fila.map(a => {
-                const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
-                let alerta = a.dias_parado > 14 ? 'color:#dc2626;font-weight:600;'
-                    : a.dias_parado > 7 ? 'color:#f59e0b;font-weight:600;' : '';
-                let coluna = `${a.dias_parado}d`;
-                if (a.etapa === 8) {
-                    if (a.reagendado_para) {
-                        const hoje = new Date().toISOString().slice(0, 10);
-                        if (a.reagendado_para <= hoje) {
-                            coluna = 'Enviar hoje!';
-                            alerta = 'color:#dc2626;font-weight:600;';
-                        } else {
-                            coluna = `agendado ${formatarDataBR(a.reagendado_para)}`;
-                            alerta = '';
-                        }
-                    } else {
-                        coluna = 'sem data (fila manual)';
-                        alerta = '';
-                    }
-                }
-                return `<tr style="border-top:1px solid var(--color-border);">
-                    <td style="padding:6px;">${esc(a.nome)}</td>
-                    <td>${esc(a.especialidade || '—')}</td>
-                    <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
-                    <td style="${alerta}">${coluna}</td>
-                    <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Ação</button></td>
-                </tr>`;
-            }).join('')}</tbody>
-        </table>`;
+        lista.innerHTML = `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                <span class="welcome-chip">${resumo.pendentes_total || 0} pendente(s)</span>
+                <span class="welcome-chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;">${resumo.atrasados || 0} atrasado(s)</span>
+                <span class="welcome-chip" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">${resumo.vencem_hoje || 0} vence(m) hoje</span>
+                <span class="welcome-chip" style="background:#f3f4f6;color:#374151;border:1px solid #d1d5db;">${resumo.bloqueados || 0} bloqueado(s)</span>
+                <span class="welcome-chip" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;">${resumo.sem_responsavel || 0} sem responsável</span>
+            </div>
+            <table style="width:100%;font-size:13px;border-collapse:collapse;min-width:900px;">
+                <thead><tr style="text-align:left;">
+                    <th style="padding:6px;">Prioridade</th>
+                    <th>Residente</th>
+                    <th>Próxima ação</th>
+                    <th>Prazo</th>
+                    <th>Responsável</th>
+                    <th>Situação</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>${fila.map(a => {
+                    const info = PIPELINE_ETAPAS_INFO[a.etapa] || {};
+                    const atrasado = a.dias_atraso != null && a.dias_atraso > 0;
+                    const venceHoje = a.dias_atraso === 0;
+                    const prazo = a.prazo_em
+                        ? `${formatarDataBR(a.prazo_em)}${atrasado ? ` · ${a.dias_atraso}d atrasado` : venceHoje ? ' · hoje' : ''}`
+                        : 'Sem prazo';
+                    const situacao = a.bloqueado
+                        ? `<span style="color:#b91c1c;font-weight:600;" title="${esc(a.bloqueio_motivo || '')}">Bloqueado</span>`
+                        : atrasado
+                            ? '<span style="color:#b91c1c;font-weight:600;">Atrasado</span>'
+                            : '<span style="color:#059669;">Em andamento</span>';
+                    return `<tr style="border-top:1px solid var(--color-border);">
+                        <td style="padding:6px;">
+                            <span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:${prioridadeBg(a.prioridade)};color:${prioridadeColor(a.prioridade)};">${prioridadeLabel(a.prioridade)}</span>
+                        </td>
+                        <td><strong>${esc(a.nome)}</strong><br><small style="color:var(--color-text-secondary);">${esc(a.especialidade || '—')}</small></td>
+                        <td>${a.etapa} — ${esc(info.titulo || a.acao_tipo)}</td>
+                        <td style="${atrasado ? 'color:#b91c1c;font-weight:600;' : ''}">${prazo}</td>
+                        <td>${esc(a.atribuido_a || 'Não atribuído')}</td>
+                        <td>${situacao}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick='abrirModalPipelineAcao(${JSON.stringify(a)})'>Abrir</button></td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
     } catch (_) {
         painel.style.display = 'none';
     }
@@ -242,21 +282,40 @@ async function carregarPipelineFila() {
 async function abrirModalPipelineAcao(a) {
     const info = PIPELINE_ETAPAS_INFO[a.etapa];
     if (!info) return;
-    pipelineAcaoAtual = { residente: a, etapa: a.etapa, telefoneDestino: a.telefone };
+    pipelineAcaoAtual = {
+        residente: a,
+        etapa: a.etapa,
+        acaoId: a.acao_id,
+        telefoneDestino: a.telefone,
+        emailDestino: a.email || null,
+    };
 
     document.getElementById('pa-titulo').textContent = `Etapa ${a.etapa} — ${info.titulo}`;
     document.getElementById('pa-residente-nome').textContent = `${a.nome} (${a.tipo})`;
     document.getElementById('pa-residente-info').textContent =
         `${a.especialidade || '—'} · parado há ${a.dias_parado} dia(s)`;
     document.getElementById('pa-observacao').value = '';
+    document.getElementById('pa-prioridade').value = String(a.prioridade || 0);
+    document.getElementById('pa-prazo').value = a.prazo_em || '';
+    document.getElementById('pa-bloqueado').checked = Boolean(a.bloqueado);
+    document.getElementById('pa-bloqueio-motivo').value = a.bloqueio_motivo || '';
+    document.getElementById('pa-responsavel-atual').textContent =
+        a.atribuido_a ? `Responsável: ${a.atribuido_a}` : 'Sem responsável';
+    toggleMotivoBloqueioPipeline();
 
     const extra = document.getElementById('pa-extra-campos');
     extra.innerHTML = '';
     const mensagemLabel = document.getElementById('pa-mensagem-label');
     const mensagemTxt = document.getElementById('pa-mensagem');
     const btnWpp = document.getElementById('pa-btn-whatsapp');
+    const btnOutlook = document.getElementById('pa-btn-outlook');
+    const assuntoLabel = document.getElementById('pa-email-assunto-label');
+    const assuntoInput = document.getElementById('pa-email-assunto');
+    let assuntoPadrao = '';
 
     if (info.tipoMensagem === 'aluno') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Confirmação do estágio — ${a.especialidade || a.nome}`;
         const primeiroNome = (a.nome || '').trim().split(' ')[0];
         const template = MENSAGENS_MODELO.whatsapp_aluno || TEMPLATE_ALUNO_FALLBACK;
         mensagemTxt.value = preencherTemplate(template, { nome: primeiroNome, usuario: USUARIO_LOGADO_NOME });
@@ -273,6 +332,7 @@ async function abrirModalPipelineAcao(a) {
                     ${AREA_MEDICA.map((c, idx) => `<option value="${idx}">${esc(c.especialidade)} — ${esc(c.nome)}</option>`).join('')}
                 </select>
             </label>`;
+        assuntoPadrao = `Solicitação de vaga — ${a.nome} — ${a.especialidade || 'Estágio'}`;
         const melhorIdx = melhorMatchAreaMedica(a.especialidade);
         const selectAm = document.getElementById('pa-campo-contato-am');
         if (melhorIdx !== null && selectAm) selectAm.value = melhorIdx;
@@ -283,6 +343,8 @@ async function abrirModalPipelineAcao(a) {
         await carregarAreaMedica();
         const contatoFin = (AREA_MEDICA || []).find(c => normalizarTexto(c.especialidade) === 'financeiro');
         pipelineAcaoAtual.telefoneDestino = contatoFin ? contatoFin.celular : null;
+        pipelineAcaoAtual.emailDestino = contatoFin ? contatoFin.email : null;
+        assuntoPadrao = `Solicitação de link de pagamento — ${a.nome}`;
         if (!contatoFin) {
             showToast('Contato "Financeiro" não cadastrado em Configurações > Área Médica.', 'error');
         }
@@ -296,6 +358,8 @@ async function abrirModalPipelineAcao(a) {
         mensagemLabel.style.display = 'block';
         btnWpp.style.display = 'inline-block';
     } else if (info.tipoMensagem === 'link_docs') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Pagamento e documentação do estágio — ${a.nome}`;
         extra.innerHTML = `
             <label>Link de pagamento
                 <input type="text" id="pa-campo-link" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
@@ -307,6 +371,8 @@ async function abrirModalPipelineAcao(a) {
         btnWpp.style.display = 'inline-block';
         recalcularMensagemPipeline();
     } else if (info.tipoMensagem === 'orientacoes') {
+        pipelineAcaoAtual.emailDestino = a.email || null;
+        assuntoPadrao = `Orientações para o primeiro dia — ${a.nome}`;
         extra.innerHTML = `
             <label>Local
                 <input type="text" id="pa-campo-local" oninput="recalcularMensagemPipeline()" style="${INPUT_STYLE}">
@@ -320,13 +386,21 @@ async function abrirModalPipelineAcao(a) {
     } else {
         mensagemLabel.style.display = 'none';
         btnWpp.style.display = 'none';
+        btnOutlook.style.display = 'none';
+        assuntoLabel.style.display = 'none';
     }
-    atualizarLinkPipelineAcao();
+
+    if (mensagemLabel.style.display !== 'none') {
+        assuntoInput.value = assuntoPadrao;
+        assuntoLabel.style.display = 'block';
+        btnOutlook.style.display = 'inline-block';
+    }
+    atualizarCanaisPipelineAcao();
 
     const botoes = document.getElementById('pa-botoes');
     botoes.innerHTML = '<button class="btn btn-ghost" onclick="fecharModal(\'modal-pipeline-acao\')">Cancelar</button>' +
         info.resultados.map(r =>
-            `<button class="btn ${r.classe}" onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
+            `<button class="btn ${r.classe}" ${a.bloqueado ? 'disabled title="Desbloqueie a ação antes de concluir"' : ''} onclick="executarAcaoPipeline('${r.resultado}')">${r.label}</button>`
         ).join('');
 
     abrirModal('modal-pipeline-acao');
@@ -340,6 +414,7 @@ function recalcularMensagemPipeline() {
         const selectAm = document.getElementById('pa-campo-contato-am');
         const contato = selectAm ? AREA_MEDICA[parseInt(selectAm.value, 10)] : null;
         pipelineAcaoAtual.telefoneDestino = contato ? contato.celular : null;
+        pipelineAcaoAtual.emailDestino = contato ? contato.email : null;
         document.getElementById('pa-mensagem').value = contato ? montarMensagemAreaMedica(a, contato) : '';
     } else if (info.tipoMensagem === 'link_docs') {
         const link = (document.getElementById('pa-campo-link').value || '').trim() || '(link pendente)';
@@ -359,37 +434,141 @@ function recalcularMensagemPipeline() {
             usuario: USUARIO_LOGADO_NOME,
         });
     }
-    atualizarLinkPipelineAcao();
+    atualizarCanaisPipelineAcao();
 }
 
-function atualizarLinkPipelineAcao() {
-    const btn = document.getElementById('pa-btn-whatsapp');
-    if (!pipelineAcaoAtual || btn.style.display === 'none') return;
+function atualizarCanaisPipelineAcao() {
+    if (!pipelineAcaoAtual) return;
+    const btnWpp = document.getElementById('pa-btn-whatsapp');
+    const btnOutlook = document.getElementById('pa-btn-outlook');
     const mensagem = document.getElementById('pa-mensagem').value;
-    const link = whatsappLinkDireto(pipelineAcaoAtual.telefoneDestino, mensagem);
-    if (link) {
-        btn.href = link;
-        btn.classList.remove('btn-disabled');
-    } else {
-        btn.href = 'javascript:void(0)';
-        btn.classList.add('btn-disabled');
+
+    if (btnWpp && btnWpp.style.display !== 'none') {
+        const link = whatsappLinkDireto(pipelineAcaoAtual.telefoneDestino, mensagem);
+        if (link) {
+            btnWpp.href = link;
+            btnWpp.classList.remove('btn-disabled');
+        } else {
+            btnWpp.href = 'javascript:void(0)';
+            btnWpp.classList.add('btn-disabled');
+        }
+    }
+
+    if (btnOutlook && btnOutlook.style.display !== 'none') {
+        const podeEnviar = Boolean(pipelineAcaoAtual.emailDestino && mensagem.trim());
+        btnOutlook.disabled = !podeEnviar;
+        btnOutlook.title = podeEnviar
+            ? `Enviar para ${pipelineAcaoAtual.emailDestino}`
+            : 'E-mail do destinatário não cadastrado';
     }
 }
 
-async function executarAcaoPipeline(resultado) {
+// Compatibilidade com chamadas existentes em trechos antigos do modulo.
+function atualizarLinkPipelineAcao() {
+    atualizarCanaisPipelineAcao();
+}
+
+async function enviarOutlookPipeline() {
+    if (!pipelineAcaoAtual) return;
+    const destinatario = pipelineAcaoAtual.emailDestino;
+    const assunto = (document.getElementById('pa-email-assunto').value || '').trim();
+    const mensagem = (document.getElementById('pa-mensagem').value || '').trim();
+    if (!destinatario) {
+        showToast('E-mail do destinatário não cadastrado.', 'error');
+        return;
+    }
+    if (!assunto || !mensagem) {
+        showToast('Informe assunto e mensagem antes de enviar.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('pa-btn-outlook');
+    btn.disabled = true;
+    try {
+        await apiFetch('/api/integracoes/outlook/enviar', {
+            method: 'POST',
+            body: JSON.stringify({
+                residente_id: pipelineAcaoAtual.residente.residente_id,
+                etapa: pipelineAcaoAtual.etapa,
+                destinatario,
+                assunto,
+                mensagem,
+            }),
+        });
+        showToast(`E-mail enviado pelo Outlook para ${destinatario}.`, 'success');
+    } catch (_) {
+        // apiFetch já apresenta o erro.
+    } finally {
+        atualizarCanaisPipelineAcao();
+    }
+}
+
+function toggleMotivoBloqueioPipeline() {
+    const marcado = document.getElementById('pa-bloqueado').checked;
+    const motivo = document.getElementById('pa-bloqueio-motivo');
+    motivo.style.display = marcado ? 'block' : 'none';
+}
+
+async function salvarGestaoPipeline() {
+    if (!pipelineAcaoAtual) return;
+    const bloqueado = document.getElementById('pa-bloqueado').checked;
+    const motivo = document.getElementById('pa-bloqueio-motivo').value.trim();
+    if (bloqueado && !motivo) {
+        showToast('Informe o motivo do bloqueio.', 'error');
+        return;
+    }
+    try {
+        await apiFetch(`/api/pipeline/acoes/${pipelineAcaoAtual.acaoId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                prioridade: Number(document.getElementById('pa-prioridade').value),
+                prazo_em: document.getElementById('pa-prazo').value || null,
+                bloqueado,
+                bloqueio_motivo: motivo || null,
+            }),
+        });
+        fecharModal('modal-pipeline-acao');
+        showToast('Gestão da ação atualizada.', 'success');
+        carregarPipelineFila();
+    } catch (_) {}
+}
+
+async function assumirAcaoPipeline() {
+    if (!pipelineAcaoAtual) return;
+    try {
+        await apiFetch(`/api/pipeline/acoes/${pipelineAcaoAtual.acaoId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ assumir: true }),
+        });
+        fecharModal('modal-pipeline-acao');
+        showToast('Ação atribuída a você.', 'success');
+        carregarPipelineFila();
+    } catch (_) {}
+}
+
+async function executarAcaoPipeline(resultado, override = null) {
     if (!pipelineAcaoAtual) return;
     const observacao = document.getElementById('pa-observacao').value.trim();
     try {
         await apiFetch(`/api/residentes/${pipelineAcaoAtual.residente.residente_id}/acao`, {
             method: 'POST',
-            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null }),
+            body: JSON.stringify({ etapa: pipelineAcaoAtual.etapa, resultado, observacao: observacao || null, ...(override || {}) }),
         });
         fecharModal('modal-pipeline-acao');
         showToast('Ação registrada.', 'success');
         carregarPipelineFila();
         loadResidentes();
         loadWelcomeBanner();
-    } catch (_) {}
+    } catch (error) {
+        if (!override && error.message.includes('Override exige')) {
+            const me = await apiFetch('/api/me');
+            if (me.role !== 'admin') return;
+            const motivo = prompt(error.message + '\nJustifique o override administrativo de capacidade:');
+            if (motivo?.trim() && confirm('Confirmar aluno acima da capacidade? A autorização ficará no histórico.')) {
+                await executarAcaoPipeline(resultado, {override_capacidade:true,motivo_capacidade:motivo.trim()});
+            }
+        }
+    }
 }
 
 async function loadUserInfo() {
@@ -399,6 +578,7 @@ async function loadUserInfo() {
         if (el && r.nome) {
             el.innerHTML = `<strong>${r.nome}</strong><span>${r.role}</span>`;
         }
+        USUARIO_LOGADO_ROLE = r.role;
         USUARIO_LOGADO_NOME = (r.nome || '').trim().split(' ')[0];
     } catch (_) {}
 }
@@ -722,11 +902,11 @@ function renderTabela(rows) {
             <td style="white-space:nowrap;">
                 ${r.telefone ? `<a class="btn btn-sm btn-whatsapp" href="${whatsappLink(r.telefone, r.nome)}" target="_blank" rel="noopener" title="Contatar ${esc(r.nome)} via WhatsApp">&#128241;</a>` : ''}
                 <button class="btn btn-sm btn-area-medica" onclick="abrirModalAreaMedica(${r.id})" title="Falar com a Área Médica (chefe de serviço)">&#127973;</button>
+                <button class="btn btn-sm btn-ghost" onclick="abrirAcademico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Acompanhamento acadêmico">&#127891;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirHistorico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Historico">&#9776;</button>
-                ${proximoStatus(r.status) ? `<button class="btn btn-sm btn-primary" onclick="abrirModalAvancar(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}','${esc(r.status)}')" title="Avançar status">&#9654;</button>` : ''}
                 <button class="btn btn-sm btn-ghost" onclick="abrirModalEditar(${r.id})" title="Editar">&#9998;</button>
                 <a class="btn btn-sm btn-ghost" href="/api/residentes/${r.id}/pdf" target="_blank" title="Gerar PDF da ficha">&#128196;</a>
-                <button class="btn btn-sm btn-danger" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">&#128465;</button>
+                <button class="btn btn-sm btn-danger" title="Cancelar cadastro (administrador)" onclick="confirmarExclusao(${r.id}, '${esc(r.nome).replace(/'/g,"\\'")}')">Cancelar</button>
             </td>
         </tr>`;
     }).join('');
@@ -757,9 +937,12 @@ function abrirModalNovo() {
     document.getElementById('form-tipo').value = 'Residente';
     document.getElementById('form-modalidade').value = 'Optativo';
     document.getElementById('form-status').value = 'Interessado';
+    document.getElementById('form-status').disabled = true;
     document.getElementById('form-valor').value = '';
     document.getElementById('form-forma-pag').value = '';
     document.getElementById('form-status-pag').value = 'Pendente';
+    ['form-valor','form-comprovante'].forEach(id => { const field=document.getElementById(id); if(field) field.disabled=false; });
+    document.getElementById('form-status-pag').disabled=true;
     document.getElementById('form-comprovante').value = '';
     abrirModal('modal-residente');
 }
@@ -787,6 +970,8 @@ async function abrirModalEditar(id) {
         document.getElementById('form-inicio').value = r.inicio || '';
         document.getElementById('form-termino').value = r.termino || '';
         document.getElementById('form-status').value = r.status || 'Interessado';
+        document.getElementById('form-status').disabled = true;
+        ['form-valor','form-status-pag','form-comprovante'].forEach(id => { const field=document.getElementById(id); if(field) field.disabled=true; });
         document.getElementById('form-valor').value = r.valor != null ? r.valor : '';
         document.getElementById('form-forma-pag').value = r.forma_pagamento || '';
         document.getElementById('form-status-pag').value = r.status_pagamento || 'Pendente';
@@ -835,6 +1020,9 @@ async function salvarResidente() {
         observacao: document.getElementById('form-obs').value.trim(),
     };
 
+    if (id) {
+        delete body.valor; delete body.status_pagamento; delete body.comprovante_pagamento;
+    }
     try {
         if (id) {
             await apiFetch(`/api/residentes/${id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -925,6 +1113,7 @@ async function abrirHistorico(id, nome) {
 // ─── Excluir ──────────────────────────────────────────────────
 function confirmarExclusao(id, nome) {
     idExcluir = id;
+    document.getElementById('cancelamento-motivo').value = '';
     document.getElementById('excluir-nome').textContent = nome;
     abrirModal('modal-excluir');
 }
@@ -932,8 +1121,10 @@ function confirmarExclusao(id, nome) {
 async function excluirResidente() {
     if (!idExcluir) return;
     try {
-        await apiFetch(`/api/residentes/${idExcluir}`, { method: 'DELETE' });
-        showToast('Registro excluido', 'success');
+        const motivo = document.getElementById('cancelamento-motivo').value.trim();
+        if (!motivo) { showToast('Informe a justificativa do cancelamento.', 'error'); return; }
+        await apiFetch(`/api/residentes/${idExcluir}/avancar`, {method:'POST',body:JSON.stringify({status:'Cancelado',forcar:true,observacao:motivo})});
+        showToast('Cancelamento registrado; dados preservados', 'success');
         fecharModal('modal-excluir');
         idExcluir = null;
         loadResidentes();

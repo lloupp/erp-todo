@@ -1,0 +1,13 @@
+/* Shared operational layouts; tables scroll within their section on narrow screens. */
+.main-content { min-width:0; }
+.main-content section { border:1px solid var(--color-border); border-radius:8px; padding:16px; margin-top:20px; }
+.main-content form { display:grid!important; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:16px 0; align-items:end; }
+.main-content label { display:flex; flex-direction:column; gap:6px; font-size:14px; }
+.main-content input,.main-content select { padding:8px; max-width:100%; box-sizing:border-box; background:var(--color-surface); color:var(--color-text); border:1px solid var(--color-border); border-radius:5px; }
+.main-content table { width:100%; border-collapse:collapse; }
+.main-content td,.main-content th { text-align:left; padding:10px; border-bottom:1px solid var(--color-border); }
+.main-content details { border:1px solid var(--color-border); padding:12px; border-radius:8px; }
+.main-content summary { cursor:pointer; }
+.sge-menu { display:none; }
+[role=alert] { color:#b91c1c; margin:12px 0; }
+@media(max-width:900px) { .sge-menu { display:block; } .main-content form { grid-template-columns:1fr; } }

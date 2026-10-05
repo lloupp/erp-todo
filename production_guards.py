@@ -8,6 +8,7 @@ security headers at the production entry point.
 from __future__ import annotations
 
 from flask import jsonify, request
+from urllib.parse import urlsplit
 from flask_login import current_user
 
 
@@ -29,6 +30,23 @@ def install_production_guards(app) -> None:
     def _enforce_sensitive_admin_mutations():
         if request.method not in UNSAFE_METHODS:
             return None
+        if current_user.is_authenticated:
+            if request.headers.get('Sec-Fetch-Site') == 'cross-site':
+                return jsonify({'erro': 'Origem da requisicao nao permitida'}), 403
+            origin = request.headers.get('Origin')
+            if origin and urlsplit(origin).netloc != request.host:
+                return jsonify({'erro': 'Origem da requisicao nao permitida'}), 403
+            role=current_user.role
+            if request.path.startswith('/api/') and role not in {'admin','user','atendimento','coordenacao','financeiro','somente_leitura'}:
+                return jsonify({'erro':'Perfil sem permissao operacional.'}),403
+            if role == 'financeiro' and request.path.startswith('/api/') and '/financeiro' not in request.path:
+                return jsonify({'erro':'Perfil financeiro restrito ao modulo financeiro.'}),403
+            if '/certificado' in request.path and request.method in UNSAFE_METHODS and role not in {'admin','coordenacao'}:
+                return jsonify({'erro':'Certificado exige coordenacao ou administrador.'}),403
+            if '/pago' in request.path and role not in {'admin','financeiro'}:
+                return jsonify({'erro':'Pagamento exige financeiro ou administrador.'}),403
+            if current_user.role == 'somente_leitura' and request.path.startswith('/api/'):
+                return jsonify({'erro': 'Perfil somente leitura'}), 403
         if not request.path.startswith(ADMIN_MUTATION_PREFIXES):
             return None
         if not current_user.is_authenticated:

@@ -1,274 +1,226 @@
 # Pipeline de Atendimento — Residentes & Doutorandos
 
-Fluxo de trabalho controlado do cadastro à conclusão do estágio, mapeando o atendimento humano feito pela equipe administrativa do Ensino e Pesquisa (Santa Casa / UFCSPA).
+Fluxo operacional do cadastro à conclusão real do estágio. O pipeline é a fonte de verdade para a próxima ação da equipe.
 
-Princípio do sistema: **NADA é enviado automaticamente**. O ERP pergunta "fazer X agora?" e o humano confirma. Mensagens são sempre editáveis no modal antes de abrir o WhatsApp/email. Tudo é rastreável (responsável, timestamp, observação).
+Princípio central: **nada é enviado ou concluído automaticamente**. Microsoft Forms pode criar a inscrição; Outlook/WhatsApp podem preparar ou enviar a comunicação após ação explícita do usuário; a mudança de etapa continua sendo confirmada no SGE.
 
----
-
-## Visão geral
+## Fluxo
 
 ```
-Forms/Excel ──► [1] Le registro ──► [2] Confirma com cliente ──► [3] Aciona chefe de
-                     │                                           serviço (vaga)
-                     │                                                  │
-                     ▼                                                  ▼
-                  Interessado                                     Em andamento
-                                                                         │
-            ┌──────────────────────────────────────────────────────────┘
-            ▼
-       [4] Chefe defere vaga
-            │  ├─ Defere  ─► Deferido ──► [5] Pede link ao financeiro
-            │  └─ Indefere ─► Indeferido (pipeline encerra)
-            │                              │
-            ▼                              ▼
-       Deferido                       [6] Envia link + docs ao cliente
-                                           │
-                                           ▼
-                                      [7] Recebe comprovante + analisa
-                                           │
-                                           ▼
-                                     Confirmado
-                                           │
-                                           ▼
-                                  [8] Orientações 1ª semana
-                                       (T = início - 7 dias)
-                                           │
-                                           ▼
-                                     Concluído
+Forms / Excel / cadastro manual
+        |
+        v
+[1] Triagem
+        |
+        v
+[2] Confirmar com aluno
+        |
+        v
+[3] Acionar chefe de serviço
+        |
+        v
+[4] Registrar deferimento
+   | deferido        | indeferido
+   v                 v
+[5] Solicitar        encerra
+    link financeiro
+        |
+        v
+[6] Enviar link + documentos
+        |
+        v
+[7] Validar pagamento + documentos
+        |
+        v
+     Confirmado
+        |
+        v
+[8] Orientações do 1º dia
+    prazo = início - 7 dias
+        |
+        v
+[9] Concluir estágio
+    prazo = data de término
+        |
+        v
+     Concluído
 ```
 
----
+A etapa 8 **não** conclui o estágio. Ela somente registra que as orientações foram enviadas. A conclusão ocorre na etapa 9 e somente a partir da data de término cadastrada.
 
-## Tabela de etapas x status x ação no sistema
+## Etapas e prazos
 
-| Passo | Quando | Status residente | Ação humana | O que o sistema faz | Rastreio |
-|:-----:|--------|:----------------:|-------------|---------------------|----------|
-| 1 | Ao importar do Forms/Excel | Interessado | Lê registro (vaga + especialidade) | Cria ação etapa 1 pendente; lista na fila de triagem | `pipeline_acoes` |
-| 2 | Após leitura | Interessado | Contata cliente (email/WhatsApp) confirmando pedido | Botão "Contatar" abre WhatsApp do aluno; botão "Confirmou" marca ação feita e cria etapa 2 pendente | `pipeline_acoes` |
-| 3 | Cliente confirmou | Em andamento | Contata chefe de serviço da especialidade | Reaproveita modal Área Médica atual (msg + WhatsApp ao chefe); botão "Enviado" marca feita e cria etapa 3 pendente; alerta vermelho se >7 dias sem resposta | `pipeline_acoes` |
-| 4 | Chefe responde | Em andamento → Deferido / Indeferido | Recebe deferimento do chefe | Botão "Defere" → status=Deferido, ação etapa 4 feita, cria etapa 5 pendente; botão "Indefere" → encerra pipeline | `pipeline_acoes` + `historico_residentes` |
-| 5 | Após deferimento | Deferido | Pede ao financeiro para gerar link de pagamento | Botão "Solicitar link" abre WhatsApp com msg modelo ao financeiro; marca ação feita, cria etapa 6 pendente | `pipeline_acoes` |
-| 6 | Link recebido do financeiro | Deferido | Envia link de pagamento + solicitação de documentos ao cliente | Botão "Enviar link + docs" abre modal com msg modelo (link + lista de docs); marca ação feita, cria etapa 7 pendente | `pipeline_acoes` |
-| 7 | Cliente retorna | Deferido → Confirmado | Recebe comprovante de pagamento + documentos e faz análise manual | Botão "Comprovante + docs OK" → status=Confirmado, ação etapa 7 feita, cria etapa 8 pendente; alerta vermelho se >7 dias sem retorno | `pipeline_acoes` + `historico_residentes` |
-| 8 | 7 dias antes do início | Confirmado → Concluído | Envia orientações para o primeiro dia | Sistema agenda ação etapa 8 pendente em `T = início - 7 dias`; no dia, banner "Enviar orientações hoje"; botão "Enviar orientações" abre msg modelo, marca feita e conclui | `pipeline_acoes` + `historico_residentes` |
+| Etapa | Próxima ação | Status principal | Prazo padrão |
+|---|---|---|---|
+| 1 | Triar cadastro | Interessado | 1 dia |
+| 2 | Confirmar pedido com aluno | Interessado | 3 dias |
+| 3 | Acionar chefe de serviço | Em andamento | 7 dias |
+| 4 | Registrar resposta/deferimento | Em andamento | 7 dias |
+| 5 | Solicitar link ao financeiro | Deferido | 2 dias |
+| 6 | Enviar link + documentos | Deferido | 2 dias |
+| 7 | Validar comprovante + documentos | Deferido | 7 dias |
+| 8 | Enviar orientações | Confirmado | início - 7 dias |
+| 9 | Registrar conclusão real | Confirmado | data de término |
 
----
+Os prazos podem ser ajustados manualmente por ação sem alterar as datas acadêmicas do estágio.
 
-## Detalhamento por passo
+## Regras de avanço
 
-### Passo 1 — Leitura do registro
+### Etapa 7 — confirmação
 
-- **Trigger**: importação do Microsoft Forms (sync recorrente) ou importação manual de planilha Excel via `/api/residentes/importar-excel`. Também ocorre em cadastro manual pelo formulário.
-- **Entrada**: a planilha do Forms é texto livre (não normalizado) nos campos `especialidade`, `instituicao_origem`, `programa_ano`, `mes_desejado`, `periodo_desejado`.
-- **Humano**: abre o registro na fila de triagem, confere a especialidade digitada (o sistema sugere a-versão-canônica via `_melhor_match_especialidade` já existente), ajusta `mes_ano` a partir do `mes_desejado` se necessário, corrige campos óbvios.
-- **Sistema**: ao concluir a triagem, marca a ação 1 como feita e cria a ação 2 (pende te). O residente permanece em `Interessado`.
-- **Sair do passo**: botão "Revisado" na fila.
+O resultado **Comprovante + docs OK** somente é aceito quando `status_pagamento` estiver em:
 
-### Passo 2 — Confirmação com o cliente
+- `Pago`; ou
+- `Isento`.
 
-- **Status**: `Interessado`.
-- **Humano**: usa o botão WhatsApp do aluno (já existe em `residentes.js`), com mensagem modelo `whatsapp_aluno`, para confirmar o pedido (vaga e especialidade).
-- **Desfechos**:
-  - **Confirmou**: marca ação 2 como feita, avança status para `Em andamento` (via `/api/residentes/<id>/avancar` já existente), cria ação 3 pendente.
-  - **Não respondeu / cancelou**: ação 2 permanece pendente; depois de N dias sem resposta, o sistema sugere mover para `Desistente` (mas só com confirmação humana).
-- **Sair do passo**: botão "Confirmou" (avança) ou "Reagendar" (permite remarcar/observar).
+Caso contrário, o backend bloqueia o avanço.
 
-### Passo 3 — Acionamento do chefe de serviço
+### Etapa 8 — orientações
 
-- **Status**: `Em andamento`.
-- **Humano**: usa o botão Área Médica (já existe, `abrirModalAreaMedica`), que sugere automaticamente o contato do chefe da especialidade mais próxima e abre modal com mensagem `whatsapp_area_medica` editável. Envia por WhatsApp (ou email, se o chefe não tiver WhatsApp).
-- **Sistema**: botão "Enviado" marca ação 3 como feita, cria ação 4 pendente. Se passaram >7 dias sem a ação 4 ser concluída (sem resposta do chefe), o registro entra em alerta vermelho na fila (mesma lógica de `dias_no_status` já usada no front).
-- **Sair do passo**: botão "Enviado" (registra que o contato foi feito).
+Antes de marcar **Orientações enviadas**, o cadastro precisa ter:
 
-### Passo 4 — Deferimento da vaga
+- data de início;
+- data de término.
 
-- **Status**: `Em andamento`.
-- **Humano**: recebe a resposta do chefe de serviço (via WhatsApp/email) e registra o deferimento ou indeferimento.
-- **Desfechos**:
-  - **Defere**: botão "Defere" → status `Deferido`, ação 4 feita, cria ação 5 pendente.
-  - **Indefere**: botão "Indefere" → status `Indeferido`, pipeline encerra (ações futuras marcadas como `pulado` com motivo).
-  - **Trocado** (chefe sugere outra especialidade/período): botão "Trocado" → status `Trocado`, volta para passo 3 com novo contato.
-- **Rastreio**: fica em `historico_residentes` (responsável + observação + ts) e em `pipeline_acoes`.
+Ao concluir a etapa 8, o residente permanece `Confirmado` e é criada a etapa 9.
 
-### Passo 5 — Solicitação de link de pagamento ao financeiro
+### Etapa 9 — conclusão
 
-- **Status**: `Deferido`.
-- **Humano**: aciona o setor financeiro (WhatsApp) pedindo a geração do link de pagamento para o residente. O valor já está no registro (`residentes.valor`).
-- **Sistema**: botão "Solicitar link" abre WhatsApp com mensagem modelo `whatsapp_financeiro_link` (nova), preenchida com nome, especialidade, valor e período. Marca ação 5 como feita, cria ação 6 pendente.
-- **Configuração necessária**: adicionar um contato financeiro (celular) em `area_medica` (especialidade fictícia "Financeiro") ou via nova variável de ambiente `FINANCEIRO_WHATSAPP`.
-- **Sair do passo**: botão "Solicitar link" (registra que o pedido foi enviado ao financeiro).
+**Estágio concluído** somente é aceito quando a data de término for igual ou anterior à data atual.
 
-### Passo 6 — Envio do link + solicitação de documentos ao cliente
+Também existem os encerramentos:
 
-- **Status**: `Deferido`.
-- **Humano**: assim que recebe o link de pagamento do financeiro, encaminha ao cliente via WhatsApp/email, junto com a solicitação de todos os documentos necessários (CRM, termo, vacina, RG, foto, etc. — depende da especialidade).
-- **Sistema**: botão "Enviar link + docs" abre modal com mensagem modelo `whatsapp_cliente_link_docs` (nova), preenchida com nome, valor, especialidade e lista de documentos. O usuário edita se necessário antes de abrir o WhatsApp. Marca ação 6 como feita, cria ação 7 pendente.
-- **Lista de documentos por especialidade**: se houver variação, pode ser parametrizada em `area_medica.obs_internato`/`obs_residencia` ou numa nova coluna `documentos_necessarios` (fase posterior).
-- **Sair do passo**: botão "Enviar" (registra que o link e a solicitação de docs foram enviados ao cliente).
+- `Nao veio`;
+- `Cancelado`.
 
-### Passo 7 — Recebimento e análise de comprovante + documentos
+Esses encerram o pipeline sem marcar o estágio como concluído.
 
-- **Status**: `Deferido → Confirmado`.
-- **Humano**: recebe o comprovante de pagamento e os documentos do cliente, faz análise manual (confere nomes, prazos, assinaturas, validade do CRM, etc.). Se tudo estiver OK, marca o comprovante e avança; se faltar algo, volta ao passo 6 (reesolicita).
-- **Sistema**:
-  - Campo `comprovante_pagamento` (texto livre, já existe) — onde colar link/ID do comprovante.
-  - Botão "Comprovante + docs OK" → status `Confirmado`, ação 7 feita, cria ação 8 pendente.
-  - Botão "Falta documento" → volta ação 6 para pendente, registra motivo na observação.
-  - Alerta vermelho se >7 dias sem resposta do cliente (mesma lógica de `dias_no_status`).
-- **Sair do passo**: botão "Comprovante + docs OK" (avança) ou "Falta documento" (volta).
+## Gestão da próxima ação
 
-### Passo 8 — Orientações para o primeiro dia
+Cada ação pendente pode registrar:
 
-- **Status**: `Confirmado → Concluído`.
-- **Trigger**: automático, baseado na data de `inicio`. O sistema agenda a ação 8 para `T = inicio - 7 dias`.
-- **Humano**: no dia (ou alguns dias antes), o banner da fila mostra "Enviar orientações hoje para X". O usuário clica, abre o WhatsApp/email do aluno com a mensagem modelo `whatsapp_cliente_orientacoes` (nova), preenchida com nome, especialidade, data e local do primeiro dia.
-- **Sistema**: botão "Enviar orientações" marca ação 8 como feita e, opcionalmente, avança status para `Concluído` (ou mantém `Confirmado` até o fim efetivo do estágio). Se `inicio` não estiver preenchido, a ação fica pendente sem data-alvo e entra na fila manual.
-- **Sair do passo**: botão "Enviar orientações" (conclui o pipeline para o residente).
+- **prioridade**: Normal, Alta ou Urgente;
+- **prazo**;
+- **responsável atual**;
+- **bloqueio**;
+- **motivo do bloqueio**.
 
----
+Uma ação bloqueada permanece visível na fila, mas não pode ser concluída até ser desbloqueada.
 
-## Conceitos de controle
+O botão **Assumir para mim** atribui a ação ao usuário logado.
 
-### Ação pendente, feita e pulada
+## Ordenação da fila
 
-Cada passo do pipeline é uma linha na tabela `pipeline_acoes`, ligada a um residente:
+`GET /api/pipeline/fila` ordena a fila considerando:
 
-```
-pipeline_acoes (
-    id, residente_id, etapa (1-8), acao_tipo, status,
-    responsavel, ts, observacao, reagendado_para
-)
-```
+1. prioridade manual;
+2. ações atrasadas;
+3. ações que vencem hoje;
+4. bloqueios que exigem atenção;
+5. prazo mais próximo;
+6. antiguidade.
 
-- `pendente` — precisa de ação humana (aparece na fila)
-- `feita` — ação concluída
-- `pulado` — ação cancelada (ex: indeferimento, desistência)
+A fila mostra, para cada item:
 
-A fila de atendimento (`/api/pipeline/fila`) lista apenas ações `pendente`, ordenadas por criticidade (dias parado) e por data-alvo (`reagendado_para` para o passo 8).
+- residente;
+- especialidade;
+- próxima ação;
+- prazo;
+- atraso;
+- prioridade;
+- responsável;
+- bloqueio.
 
-### Encerramento do pipeline
+## Dashboard do pipeline
 
-O pipeline de um residente encerra quando:
-- Status vira `Indeferido`, `Desistente`, `Cancelado` ou `Nao veio` — todas as ações pendentes viram `pulado` com motivo.
-- Ação 8 é concluída — todas as ações estão `feita`, residente pode ir para `Concluído`.
+`GET /api/pipeline/dashboard` retorna:
 
-### Alertas de prazo
+- `pendentes_total`;
+- `pendentes_por_etapa`;
+- `atrasados`;
+- `vencem_hoje`;
+- `bloqueados`;
+- `sem_responsavel`;
+- `criticos`;
+- `feitos`.
 
-Reaproveita a lógica de `dias_no_status` já existente no frontend (badge laranja >7 dias, vermelho >14 dias). No pipeline, o controle é por etapa:
-- Etapa 3 (chefe) sem ação 4há >7 dias → alerta laranja
-- Etapa 7 (cliente) sem ação 8 há >7 dias → alerta laranja
-- Qualquer etapa >14 dias parado → alerta vermelho
+`criticos` inclui ações marcadas como Urgentes ou atrasadas há pelo menos 3 dias.
 
-### Responsável
+## Comunicações
 
-Toda ação registra `responsavel` (nome do usuário logado, igual ao `historico_residentes` atual). Isso permite auditoria: quem contatou, quem deferiu, quem enviou o link.
+### Microsoft Forms
 
----
+Novas respostas podem entrar automaticamente via:
 
-## Novas mensagens modelo (3)
+`POST /api/integracoes/forms/inscricao`
 
-Adicionar à tabela `mensagens_modelo` (mesmo padrão das existentes `whatsapp_aluno` e `whatsapp_area_medica`):
+Uma inscrição nova entra como `Interessado` e recebe a etapa 1 — Triagem.
 
-### `whatsapp_financeiro_link`
-Texto: "Olá! Tudo bem? Gostaria de solicitar a geração do link de pagamento para {{tipo}} {{nome}}, especialidade {{especialidade}}, valor R$ {{valor}}, período {{periodo}}. Encaminho para o cliente assim que receber. Obrigado!"
+### Outlook / Microsoft Graph
 
-Placeholders: nome, tipo (residente/doutorando), especialidade, valor, periodo, usuario.
+Nas etapas com comunicação, o modal permite revisar assunto e mensagem e clicar em **Enviar por Outlook**.
 
-### `whatsapp_cliente_link_docs`
-Texto: "Olá {{nome}}, tudo bem? Segue o link de pagamento da sua inscrição: {{link}}. Valor: R$ {{valor}}. Junto com o pagamento, encaminhe os documentos: {{documentos}}. Após o pagamento, nos avise com o comprovante. Qualquer dúvida, me chame. Abraço!"
+O envio do e-mail **não muda a etapa automaticamente**. Depois do envio, o usuário registra o resultado correspondente no pipeline.
 
-Placeholders: nome, link, valor, documentos, especialidade, usuario.
+### WhatsApp
 
-### `whatsapp_cliente_orientacoes`
-Texto: "Olá {{nome}}, tudo bem? Faltam poucos dias para o início do seu estágio em {{especialidade}} ({{data_inicio}}). Seguem as orientações para o primeiro dia: {{orientacoes}}. Local: {{local}}. Confirmar recebimento, por favor. Até logo!"
+O comportamento continua o mesmo: mensagem pré-preenchida e editável antes de abrir o WhatsApp.
 
-Placeholders: nome, especialidade, data_inicio, orientacoes, local, usuario.
+## Auditoria
 
-Todas as três são editáveis na tela de Configurações (`PUT /api/mensagens-modelo/<chave>`, admin-only), igual às que já existem.
-
----
-
-## Novas rotas (backend)
-
-| Método | Rota | Quem | Descrição |
-|--------|------|------|-----------|
-| GET | `/api/pipeline/fila` | admin | Lista ações `pendente` com dados do residente, etapa atual, dias parado, alerta |
-| GET | `/api/pipeline/fila/<etapa>` | admin | Filtra fila por etapa 1-8 |
-| POST | `/api/residentes/<id>/acao` | admin | Marca ação (feita/pulada); sistema cria próxima pendente automaticamente |
-| GET | `/api/pipeline/dashboard` | todos | KPIs por etapa (pendentes, críticos, feitos) |
-| GET | `/api/pipeline/residente/<id>` | admin | Histórico do pipeline de um residente (todas as ações) |
-
-Segurança: repete o padrão do `ai.py` — nunca executa SQL gerado; sempre humano actionado; mensagens sempre editáveis antes do envio.
-
----
-
-## Novas telas / componentes frontend
-
-1. **Banner no `/residentes`** *(reaproveita o `welcome-banner` atual)*: chips por etapa pendente. Ex: "3 novos p/ triagem" (etapa 1), "5 aguardando chefe" (etapa 3), "2 prontos p/ enviar link" (etapa 6). Click filtra a fila.
-
-2. **Modal de ação por passo** *(um modal genérico, adaptável)*: mostra o residente, a etapa atual, botões de ação (Confirmou/Enviado/Defere/Indefere/etc.), campo de observação, botão para abrir o WhatsApp/email com a mensagem modelo preenchida e editável antes de enviar. Fecha marcando a ação.
-
-3. **Fila de atendimento** *(nova view `/pipeline` ou aba em `/residentes`)*: tabela kanban opcional com 8 colunas (uma por etapa), mostrando os residentes em cada pendência. Alternativamente, lista simples filtrável por etapa/ status/ criticidade.
-
----
-
-## Integração com a IA (opcional)
-
-Reaproveita `/api/ai/insights` (já existe em `ai.py`). O `montar_snapshot(db)` deve incluir dados do pipeline:
-
-- Contagem de pendentes por etapa
-- Residentes críticos (>14 dias parados)
-- Próximas ações 8 agendadas (orientações a enviar na semana)
-
-A IA continua sem gerar SQL e sem enviar mensagens — apenas produz um resumo executivo diário com o que precisa de atenção.
-
----
-
-## Migração / implementação
-
-1. Criar tabela `pipeline_acoes` (migração inline no bloco `__main__` de `app.py`, mesmo padrão das outras).
-2. Seed: para residentes já existentes (status atual), criar ações pendentes compatíveis — ex: em `Em andamento` criar etapa 3 pendente; em `Deferido` criar etapa 5 pendente. Não alterar status.
-3. Adicionar as 3 mensagens modelo no `MENSAGEM_MODELO_SEED` em `app.py`.
-4. Implementar rotas `/api/pipeline/*` no `app.py`.
-5. Adicionar lógica de criação de ação pendente nos endpoints de importação (`/api/residentes/importar-excel` e no `sync_forms.py`, se reativado) e no `POST /api/residentes` (cadastro manual).
-6. Adicionar banner e modal de ação no `residentes.js` / template `residentes.html`.
-7. Opcional: view `/pipeline` (kanban ou fila).
-
----
-
-## Fluxo de dados (resumo)
+`pipeline_acoes` registra a execução operacional:
 
 ```
-IMPORTAÇÃO           PIPELINE (8 etapas)            STATUS (SQLite)
-----------           --------------------           ----------------
-Forms → residentes   ação etapa 1 pendente          Interessado
-                     [1] Revisado
-                     ação etapa 2 pendente
-                     [2] Confirmou
-                     ação etapa 3 pendente          Em andamento
-                     [3] Enviado ao chefe
-                     ação etapa 4 pendente
-                     [4] Defere
-                     ação etapa 5 pendente          Deferido
-                     [5] Solicitar link
-                     ação etapa 6 pendente
-                     [6] Enviar link + docs
-                     ação etapa 7 pendente
-                     [7] Comprovante + docs OK      Confirmado
-                     ação etapa 8 pendente
-                     (T = inicio - 7 dias)
-                     [8] Enviar orientações         Concluído
-                     pipeline encerra
+id
+residente_id
+etapa
+acao_tipo
+situacao
+prioridade
+prazo_em
+bloqueado
+bloqueio_motivo
+atribuido_a
+responsavel
+observacao
+criado_em
+atualizado_em
+concluido_em
 ```
 
----
+`historico_residentes` registra mudanças de status.
 
-## Pontos de atenção
+`integracao_eventos` registra eventos Microsoft Forms/Outlook.
 
-- **Nada é enviado automaticamente.** O sistema nunca dispara WhatsApp/email sem clique humano.
-- **Mensagens sempre editáveis.** O modal abre com o template preenchido, mas o usuário pode alterar antes de abrir o `wa.me`.
-- **Passo 8 depende de `inicio`.** Se a data de início não estiver preenchida no cadastro, a ação 8 fica pendente sem data-alvo e entra na fila manual.
-- **Fallback de tabela livre.** Especialidade do Forms é texto livre; o `_melhor_match_especialidade` sugere a versão canônica, mas a correção é sempre humana (passo 1).
-- **Encerramento manual.** Indeferido/Desistente/Cancelado/Nao veio encerram o pipeline, mas precisam de clique humano nos botões do modal.
-- **Auditoria.** Cada ação tem responsável e timestamp. O histórico de status (`historico_residentes`) segue gravando alterações de status, e `pipeline_acoes` grava o detalhamento das ações por etapa.
+## Proteção contra bypass
+
+Enquanto existe uma ação pendente:
+
+- a interface não exibe mais o botão antigo **Avançar status**;
+- alteração direta de status no cadastro é recusada;
+- `POST /api/residentes/<id>/avancar` é bloqueado.
+
+Uma correção excepcional ainda pode ser feita por administrador usando `forcar=true` no endpoint legado, deixando trilha explícita no histórico.
+
+## Encerramento do pipeline
+
+O pipeline termina quando:
+
+- etapa 4 resulta em `Indeferido`;
+- etapa 2 resulta em `Desistente`;
+- etapa 9 resulta em `Concluído`, `Nao veio` ou `Cancelado`;
+- um administrador faz uma correção excepcional explícita.
+
+## Relação com o acompanhamento acadêmico
+
+Pipeline operacional e acompanhamento acadêmico são separados:
+
+- **pipeline**: quem precisa fazer o quê e até quando;
+- **acadêmico**: documentos, carga horária e elegibilidade para certificado.
+
+O certificado continua condicionado a:
+
+- status `Concluído`;
+- pagamento `Pago` ou `Isento`;
+- carga horária cumprida;
+- todos os documentos obrigatórios aprovados.

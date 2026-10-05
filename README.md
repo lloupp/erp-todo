@@ -49,8 +49,7 @@ Acesse: `http://localhost:5000`.
 - Controle de vagas semanais por especialidade
 - Banner de boas-vindas com pendências do dia
 - Tema claro/escuro (salvo no navegador)
-- Notificações por e-mail (opcional, via SMTP)
-- Backup diário com retenção de 7 dias
+- Notificações por e-mail (opcional, via SMTP)\n- Microsoft Forms: entrada automática de inscrições via webhook autenticado\n- Outlook/Microsoft Graph: envio auditado de mensagens do pipeline com confirmação humana\n- Backup diário com retenção de 7 dias
 
 ## Etapas do fluxo
 
@@ -168,3 +167,7 @@ Backups são salvos em `backups/` e removidos automaticamente após 7 dias.
 ## Notificações por e-mail
 
 Desabilitadas por padrão. Configure `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM` no `.env`; reinicie o entrypoint de produção depois da alteração.
+
+## Integrações Microsoft
+
+A integração de Microsoft Forms + Outlook está documentada em [docs/MICROSOFT_INTEGRATIONS.md](docs/MICROSOFT_INTEGRATIONS.md). O Forms cria inscrições idempotentes na fila de triagem; o Outlook envia pelo Microsoft Graph somente após ação explícita do operador.
