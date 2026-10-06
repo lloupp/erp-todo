@@ -362,3 +362,85 @@ class SgeOperationsTests(unittest.TestCase):
             response=self.client.post(f'/api/residentes/{rid}/documentos/{did}/arquivo',data={'arquivo':(io.BytesIO(b'%PDF-1.4'+b'x'*2048),'grande.pdf')})
         self.assertEqual(response.status_code,413)
         self.assertTrue(response.is_json)
+
+
+    def test_student_modal_and_bulk_stage_reconciliation(self):
+        self.login_admin()
+        inicio=(date.today()-timedelta(days=10)).isoformat()
+        termino=(date.today()-timedelta(days=1)).isoformat()
+        rid1=self.create(nome='Ajuste individual',inicio=inicio,termino=termino)
+        rid2=self.create(nome='Ajuste em lote',inicio=inicio,termino=termino)
+
+        resumo=self.client.get(f'/api/residentes/{rid1}/resumo')
+        self.assertEqual(resumo.status_code,200,resumo.get_data(as_text=True))
+        self.assertEqual(resumo.get_json()['pipeline']['etapa'],1)
+        self.assertTrue(resumo.get_json()['pode_ajustar_etapa'])
+
+        moved=self.client.put(f'/api/pipeline/residente/{rid1}/etapa',json={
+            'etapa':3,
+            'justificativa':'Cadastro importado ja havia confirmado interesse',
+        })
+        self.assertEqual(moved.status_code,200,moved.get_data(as_text=True))
+        self.assertEqual((moved.get_json()['etapa'],moved.get_json()['status']),(3,'Em andamento'))
+
+        listing=self.client.get('/api/sge/ajuste-etapas/alunos?busca=Ajuste&per_page=100')
+        self.assertEqual(listing.status_code,200,listing.get_data(as_text=True))
+        self.assertTrue({rid1,rid2}.issubset({row['id'] for row in listing.get_json()['data']}))
+        self.assertEqual(self.client.get('/sge/ajuste-etapas').status_code,200)
+        self.assertIn('Ajuste de etapas',self.client.get('/residentes').get_data(as_text=True))
+
+        batch=self.client.post('/api/sge/ajuste-etapas/aplicar',json={
+            'ids':[rid1,rid2],
+            'destino':'etapa',
+            'etapa':4,
+            'justificativa':'Ajuste apos importacao da planilha historica',
+        })
+        self.assertEqual(batch.status_code,200,batch.get_data(as_text=True))
+        self.assertEqual((batch.get_json()['sucessos'],batch.get_json()['falhas']),(2,0))
+        with sqlite3.connect(self.db_path) as db:
+            for rid in (rid1,rid2):
+                pending=db.execute(
+                    "SELECT etapa FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+                    (rid,),
+                ).fetchone()
+                self.assertEqual(pending[0],4)
+
+        completed=self.client.post('/api/sge/ajuste-etapas/aplicar',json={
+            'ids':[rid1,rid2],
+            'destino':'concluido',
+            'justificativa':'Alunos importados apos realizacao integral do estagio',
+        })
+        self.assertEqual(completed.status_code,200,completed.get_data(as_text=True))
+        self.assertEqual((completed.get_json()['sucessos'],completed.get_json()['falhas']),(2,0))
+        with sqlite3.connect(self.db_path) as db:
+            for rid in (rid1,rid2):
+                self.assertEqual(
+                    db.execute("SELECT status FROM residentes WHERE id=?",(rid,)).fetchone()[0],
+                    'Concluído',
+                )
+                self.assertIsNone(db.execute(
+                    "SELECT id FROM pipeline_acoes WHERE residente_id=? AND situacao='pendente'",
+                    (rid,),
+                ).fetchone())
+            self.assertGreaterEqual(
+                db.execute(
+                    "SELECT COUNT(*) FROM sge_auditoria WHERE acao='reconciliar_conclusao_historica'"
+                ).fetchone()[0],
+                2,
+            )
+
+        futuro=self.create(
+            nome='Ajuste futuro',
+            inicio=date.today().isoformat(),
+            termino=(date.today()+timedelta(days=10)).isoformat(),
+        )
+        partial=self.client.post('/api/sge/ajuste-etapas/aplicar',json={
+            'ids':[rid1,futuro],
+            'destino':'concluido',
+            'justificativa':'Teste de reconciliacao parcial historica',
+        })
+        self.assertEqual(partial.status_code,200,partial.get_data(as_text=True))
+        self.assertEqual(partial.get_json()['ignorados'],1)
+        self.assertEqual(partial.get_json()['falhas'],1)
+        failure=next(item for item in partial.get_json()['resultados'] if item['id']==futuro)
+        self.assertIn('termino futuro',failure['erro'].lower())
