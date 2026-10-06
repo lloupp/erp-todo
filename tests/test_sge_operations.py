@@ -256,7 +256,9 @@ class SgeOperationsTests(unittest.TestCase):
         item=next(i for i in groups['atrasadas']['items'] if i['id']==rid)
         self.assertIn('/residentes?acao=',item['url'])
         self.assertEqual(self.client.get(item['url']).status_code,200)
-        self.assertEqual(self.client.get('/sge/hoje').status_code,200)
+        central_page=self.client.get('/sge/hoje')
+        self.assertEqual(central_page.status_code,200)
+        self.assertIn('central-page',central_page.get_data(as_text=True))
         self.assertEqual(self.client.get(f'/sge/residentes/{rid}').status_code,200)
         response=self.client.get('/api/sge/hoje?categoria=sem_responsavel&limit=1')
         c=response.get_json()['categorias'][0]
