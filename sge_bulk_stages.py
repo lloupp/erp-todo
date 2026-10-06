@@ -226,6 +226,7 @@ def register_bulk_stages(
 
         for rid in ids:
             db = get_db()
+            residente = None
             try:
                 residente = db.execute(
                     "SELECT id,nome,status FROM residentes WHERE id=?",
@@ -295,7 +296,7 @@ def register_bulk_stages(
                 falhas += 1
                 resultados.append({
                     "id": rid,
-                    "nome": residente["nome"] if "residente" in locals() and residente else f"ID {rid}",
+                    "nome": residente["nome"] if residente else f"ID {rid}",
                     "ok": False,
                     "erro": str(exc),
                 })
