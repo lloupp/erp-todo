@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Ajuste de etapas em lote</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/sge.css">
+    <style>
+        .bulk-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:14px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface)}
+        .bulk-toolbar label{display:flex;flex-direction:column;gap:4px;font-size:12px}
+        .bulk-toolbar input,.bulk-toolbar select{height:36px;min-width:160px}
+        .bulk-actions{margin-top:14px;padding:14px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface)}
+        .bulk-actions-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,2fr);gap:10px}
+        .bulk-count{font-weight:700}
+        .bulk-result-ok{color:#047857;font-weight:600}
+        .bulk-result-error{color:#b91c1c;font-weight:600}
+        @media(max-width:760px){.bulk-actions-grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+{% set active_page='ajuste-etapas' %}
+{% include '_sidebar.html' %}
+<main class="main-content" style="padding:24px">
+    <button class="btn sge-menu" type="button" onclick="document.getElementById('sidebar').classList.toggle('open')">Menu</button>
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+            <h2 style="margin-bottom:4px">Ajuste de etapas em lote</h2>
+            <p style="margin-top:0;color:var(--color-text-secondary)">
+                Selecione vários alunos importados e ajuste o pipeline sem editar um por um.
+            </p>
+        </div>
+        <a class="btn btn-secondary" href="/residentes">Voltar aos residentes</a>
+    </div>
+
+    <div id="bulk-erro" role="alert" style="color:#b91c1c;margin-bottom:10px"></div>
+
+    <section class="bulk-toolbar">
+        <label>Buscar
+            <input id="bulk-busca" type="search" placeholder="Nome, e-mail, CPF, especialidade">
+        </label>
+        <label>Status
+            <select id="bulk-status">
+                <option value="">Todos</option>
+                <option>Interessado</option>
+                <option>Em andamento</option>
+                <option>Deferido</option>
+                <option>Confirmado</option>
+                <option>Concluído</option>
+                <option>Indeferido</option>
+                <option>Desistente</option>
+                <option>Cancelado</option>
+                <option>Nao veio</option>
+            </select>
+        </label>
+        <label>Etapa atual
+            <select id="bulk-etapa-filtro">
+                <option value="">Todas</option>
+                <option value="sem">Sem etapa pendente</option>
+                <option value="1">1 — Triagem</option>
+                <option value="2">2 — Confirmar aluno</option>
+                <option value="3">3 — Acionar chefe</option>
+                <option value="4">4 — Deferimento</option>
+                <option value="5">5 — Solicitar link financeiro</option>
+                <option value="6">6 — Enviar link/documentos</option>
+                <option value="7">7 — Validar comprovante/documentos</option>
+                <option value="8">8 — Orientações</option>
+                <option value="9">9 — Concluir estágio</option>
+            </select>
+        </label>
+        <button class="btn btn-primary" id="bulk-filtrar">Filtrar</button>
+        <button class="btn" id="bulk-limpar">Limpar</button>
+    </section>
+
+    <section style="margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-sm" id="bulk-selecionar-pagina">Selecionar página</button>
+            <button class="btn btn-sm" id="bulk-limpar-selecao">Limpar seleção</button>
+            <span class="bulk-count"><span id="bulk-total-selecionados">0</span> selecionado(s)</span>
+            <span id="bulk-paginacao-info" style="color:var(--color-text-secondary);font-size:12px"></span>
+        </div>
+        <div style="overflow:auto;border:1px solid var(--color-border);border-radius:8px">
+            <table style="width:100%;min-width:980px">
+                <thead>
+                    <tr>
+                        <th style="width:40px"><input id="bulk-check-page" type="checkbox" title="Selecionar página"></th>
+                        <th>Aluno</th>
+                        <th>Especialidade</th>
+                        <th>Período</th>
+                        <th>Status</th>
+                        <th>Etapa atual</th>
+                        <th>Situação</th>
+                    </tr>
+                </thead>
+                <tbody id="bulk-alunos-body"></tbody>
+            </table>
+        </div>
+        <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">
+            <button class="btn btn-sm" id="bulk-prev">Anterior</button>
+            <button class="btn btn-sm" id="bulk-next">Próxima</button>
+        </div>
+    </section>
+
+    <section class="bulk-actions">
+        <h3 style="margin-top:0">Aplicar aos selecionados</h3>
+        <div class="bulk-actions-grid">
+            <label>Destino
+                <select id="bulk-destino" style="width:100%;height:38px;margin-top:4px">
+                    <option value="">Selecione...</option>
+                    <option value="proxima">Avançar uma etapa</option>
+                    <option value="etapa:1">Mover para etapa 1 — Triagem</option>
+                    <option value="etapa:2">Mover para etapa 2 — Confirmar aluno</option>
+                    <option value="etapa:3">Mover para etapa 3 — Acionar chefe</option>
+                    <option value="etapa:4">Mover para etapa 4 — Deferimento</option>
+                    <option value="etapa:5">Mover para etapa 5 — Solicitar link financeiro</option>
+                    <option value="etapa:6">Mover para etapa 6 — Enviar link/documentos</option>
+                    <option value="etapa:7">Mover para etapa 7 — Validar comprovante/documentos</option>
+                    <option value="etapa:8">Mover para etapa 8 — Orientações</option>
+                    <option value="etapa:9">Mover para etapa 9 — Concluir estágio</option>
+                    <option value="concluido">Marcar estágio como Concluído — reconciliação histórica</option>
+                </select>
+            </label>
+            <label>Justificativa obrigatória
+                <input id="bulk-justificativa" type="text"
+                       placeholder="Ex.: importação da planilha histórica de alunos que já realizaram estágio"
+                       style="width:100%;height:38px;margin-top:4px">
+            </label>
+        </div>
+
+        <div id="bulk-historico-aviso" style="display:none;margin-top:10px;padding:10px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:6px">
+            A reconciliação histórica só conclui alunos com <strong>data de término já passada</strong>.
+            Ela não emite certificado automaticamente e não ignora os demais critérios acadêmicos.
+        </div>
+
+        <div id="bulk-override-box" style="display:none;margin-top:10px;padding:10px;border:1px dashed var(--color-border);border-radius:6px">
+            <label style="display:flex;gap:6px;align-items:center">
+                <input id="bulk-override" type="checkbox"> Override de capacidade para movimentações até etapa 8/9 (administrador)
+            </label>
+            <input id="bulk-override-motivo" type="text"
+                   placeholder="Justificativa do override de capacidade"
+                   style="width:100%;height:36px;margin-top:6px">
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-primary" id="bulk-aplicar">Aplicar alteração em lote</button>
+        </div>
+    </section>
+
+    <section id="bulk-resultados" style="display:none;margin-top:18px">
+        <h3>Resultado da operação</h3>
+        <p id="bulk-resultados-resumo"></p>
+        <div style="overflow:auto">
+            <table style="width:100%">
+                <thead><tr><th>Aluno</th><th>Resultado</th><th>Detalhe</th></tr></thead>
+                <tbody id="bulk-resultados-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/static/js/sge_ajuste_etapas.js"></script>
+</body>
+</html>
