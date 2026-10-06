@@ -75,7 +75,6 @@ register_bulk_stages(
     app,
     _legacy.get_db,
     _legacy.criar_acao_pipeline,
-    _legacy.avancar_pipeline,
     _legacy.PIPELINE_ETAPAS,
 )
 
