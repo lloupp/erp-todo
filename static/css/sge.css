@@ -97,3 +97,176 @@
 [data-theme="dark"] .central-page [role="alert"] {
     color: #f0a5a5;
 }
+
+
+/* Central do Dia — dedicated certificate workbench */
+.central-certificados {
+    margin-top: 20px;
+}
+.central-cert-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+}
+.central-cert-header h3 {
+    margin:0 0 3px;
+}
+.central-cert-header p {
+    margin:0;
+    color:var(--color-text-secondary);
+    font-size:13px;
+}
+.central-cert-total {
+    display:inline-flex;
+    align-items:center;
+    padding:4px 10px;
+    border-radius:999px;
+    background:var(--color-primary-light);
+    color:var(--color-primary);
+    font-size:12px;
+    font-weight:600;
+}
+.central-cert-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+}
+.central-cert-card {
+    border:1px solid var(--color-border);
+    border-radius:10px;
+    background:var(--color-surface);
+    padding:14px;
+}
+.central-cert-card-head {
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    padding-bottom:10px;
+    border-bottom:1px solid var(--color-border-light);
+}
+.central-cert-card-head > div {
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+}
+.central-cert-card-head strong {
+    font-size:14px;
+}
+.central-cert-card-head small {
+    color:var(--color-text-secondary);
+    font-size:12px;
+}
+.central-cert-count {
+    min-width:34px;
+    height:28px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:8px;
+    font-weight:700;
+    background:var(--color-surface-hover);
+    color:var(--color-text);
+}
+.central-cert-list {
+    display:flex;
+    flex-direction:column;
+    margin:8px 0;
+}
+.central-cert-item {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    padding:8px 2px;
+    border-bottom:1px solid var(--color-border-light);
+    text-decoration:none!important;
+}
+.central-cert-item:last-child {
+    border-bottom:0;
+}
+.central-cert-item > span:first-child {
+    display:flex;
+    min-width:0;
+    flex-direction:column;
+}
+.central-cert-item strong {
+    color:var(--color-text);
+    font-size:13px;
+    font-weight:600;
+}
+.central-cert-item small {
+    color:var(--color-text-secondary);
+    font-size:11px;
+}
+.central-cert-item > span:last-child {
+    font-size:11px;
+    color:var(--color-primary);
+    white-space:nowrap;
+}
+.central-cert-empty {
+    padding:12px 2px;
+    color:var(--color-text-secondary);
+    font-size:12px;
+}
+.central-cert-all {
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--color-border);
+}
+.central-cert-all h4 {
+    margin-bottom:8px;
+}
+
+[data-theme="dark"] .central-page .central-certificados {
+    border-color:#334155;
+}
+[data-theme="dark"] .central-page .central-cert-header h3 {
+    color:#d8e0ea;
+}
+[data-theme="dark"] .central-page .central-cert-header p {
+    color:#8fa0b4;
+}
+[data-theme="dark"] .central-page .central-cert-total {
+    background:#263950;
+    color:#9db9da;
+}
+[data-theme="dark"] .central-page .central-cert-card {
+    background:#1b2432;
+    border-color:#334155;
+}
+[data-theme="dark"] .central-page .central-cert-card-head {
+    border-bottom-color:#2a3748;
+}
+[data-theme="dark"] .central-page .central-cert-card-head strong,
+[data-theme="dark"] .central-page .central-cert-item strong {
+    color:#c7d2df;
+}
+[data-theme="dark"] .central-page .central-cert-card-head small,
+[data-theme="dark"] .central-page .central-cert-item small,
+[data-theme="dark"] .central-page .central-cert-empty {
+    color:#8fa0b4;
+}
+[data-theme="dark"] .central-page .central-cert-count {
+    background:#263244;
+    color:#c0ccda;
+}
+[data-theme="dark"] .central-page .central-cert-item {
+    border-bottom-color:#283548;
+}
+[data-theme="dark"] .central-page .central-cert-item:hover {
+    background:#202c3c;
+}
+[data-theme="dark"] .central-page .central-cert-item > span:last-child {
+    color:#8fb4df;
+}
+[data-theme="dark"] .central-page .central-cert-all {
+    border-top-color:#334155;
+}
+
+@media(max-width:800px) {
+    .central-cert-grid { grid-template-columns:1fr; }
+}
