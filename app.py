@@ -70,6 +70,15 @@ register_student_modal(
     _legacy.PIPELINE_ETAPAS,
 )
 
+from sge_bulk_stages import register_bulk_stages
+register_bulk_stages(
+    app,
+    _legacy.get_db,
+    _legacy.criar_acao_pipeline,
+    _legacy.avancar_pipeline,
+    _legacy.PIPELINE_ETAPAS,
+)
+
 register_sge_academico(app, _legacy.get_db)
 register_microsoft_integrations(app, _legacy.get_db, _legacy.criar_acao_pipeline)
 
