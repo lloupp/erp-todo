@@ -15,7 +15,12 @@ from sge_student_modal import (
 )
 
 
-def _concluir_historico(db, rid, justificativa, criar_acao_pipeline, avancar_pipeline):
+def _concluir_historico(db, rid, justificativa, criar_acao_pipeline):
+    """Reconcile an internship that already happened before/while data was imported.
+
+    This intentionally does not apply present-day capacity planning retroactively.
+    Certificate eligibility remains governed independently by academic/financial gates.
+    """
     justificativa = str(justificativa or "").strip()
     if len(justificativa) < 5:
         raise ValueError("Informe uma justificativa para a reconciliacao historica.")
@@ -46,8 +51,12 @@ def _concluir_historico(db, rid, justificativa, criar_acao_pipeline, avancar_pip
            ORDER BY id DESC LIMIT 1""",
         (rid,),
     ).fetchone()
-
     etapa_anterior = atual["etapa"] if atual else None
+
+    if atual and atual["etapa"] == 9 and atual["bloqueado"]:
+        motivo = atual["bloqueio_motivo"] or "sem motivo informado"
+        raise ValueError(f"Etapa 9 bloqueada: {motivo}")
+
     if atual and atual["etapa"] != 9:
         db.execute(
             """UPDATE pipeline_acoes
@@ -64,14 +73,43 @@ def _concluir_historico(db, rid, justificativa, criar_acao_pipeline, avancar_pip
     elif not atual:
         criar_acao_pipeline(db, rid, 9)
 
-    # Stage 9 preserves the regular "real completion" guard and status history.
-    resultado = avancar_pipeline(
-        db,
-        rid,
-        9,
-        "concluido",
-        current_user.nome,
-        f"[Reconciliacao historica] {justificativa}",
+    etapa9 = db.execute(
+        """SELECT * FROM pipeline_acoes
+           WHERE residente_id=? AND etapa=9 AND situacao='pendente'
+           ORDER BY id DESC LIMIT 1""",
+        (rid,),
+    ).fetchone()
+    if not etapa9:
+        raise ValueError("Nao foi possivel preparar a etapa final do pipeline.")
+    if etapa9["bloqueado"]:
+        motivo = etapa9["bloqueio_motivo"] or "sem motivo informado"
+        raise ValueError(f"Etapa 9 bloqueada: {motivo}")
+
+    db.execute(
+        """UPDATE pipeline_acoes
+           SET situacao='feita', responsavel=?, observacao=?,
+               concluido_em=CURRENT_TIMESTAMP, atualizado_em=CURRENT_TIMESTAMP
+           WHERE id=? AND situacao='pendente'""",
+        (
+            current_user.nome,
+            f"[Reconciliacao historica] {justificativa}",
+            etapa9["id"],
+        ),
+    )
+    db.execute(
+        "UPDATE residentes SET status='Concluído', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        (rid,),
+    )
+    db.execute(
+        """INSERT INTO historico_residentes
+           (residente_id,status,observacao,responsavel)
+           VALUES (?,?,?,?)""",
+        (
+            rid,
+            "Concluído",
+            f"[Reconciliacao historica] {justificativa}",
+            current_user.nome,
+        ),
     )
     auditar(
         db,
@@ -82,6 +120,7 @@ def _concluir_historico(db, rid, justificativa, criar_acao_pipeline, avancar_pip
             "etapa_anterior": etapa_anterior,
             "termino": str(termino)[:10],
             "justificativa": justificativa,
+            "capacidade_retroativa": "nao_aplicada",
         },
     )
     db.commit()
@@ -89,7 +128,6 @@ def _concluir_historico(db, rid, justificativa, criar_acao_pipeline, avancar_pip
         "ok": True,
         "status": "Concluído",
         "etapa_anterior": etapa_anterior,
-        "resultado": resultado,
     }
 
 
@@ -97,7 +135,6 @@ def register_bulk_stages(
     app,
     get_db,
     criar_acao_pipeline,
-    avancar_pipeline,
     pipeline_etapas,
 ):
     @app.route("/sge/ajuste-etapas")
@@ -241,7 +278,6 @@ def register_bulk_stages(
                         rid,
                         justificativa,
                         criar_acao_pipeline,
-                        avancar_pipeline,
                     )
                 else:
                     if destino == "proxima":
