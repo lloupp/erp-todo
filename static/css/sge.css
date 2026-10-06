@@ -11,3 +11,89 @@
 .sge-menu { display:none; }
 [role=alert] { color:#b91c1c; margin:12px 0; }
 @media(max-width:900px) { .sge-menu { display:block; } .main-content form { grid-template-columns:1fr; } }
+
+
+/* Central do Dia — softer dark-mode contrast.
+   Keep this page readable without the near-white/high-saturation text used by
+   the generic application theme. */
+.central-page .central-heading > p,
+.central-page .central-reference {
+    color: var(--color-text-secondary);
+}
+.central-page details {
+    background: var(--color-surface);
+}
+.central-page details > summary {
+    color: var(--color-text);
+}
+.central-page td {
+    color: var(--color-text-secondary);
+}
+.central-page td:first-child {
+    color: var(--color-text);
+}
+.central-page a:not(.btn) {
+    color: var(--color-primary);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+.central-page .btn {
+    font-weight: 500;
+}
+
+[data-theme="dark"] .central-page {
+    color: #cbd5e1;
+}
+[data-theme="dark"] .central-page h2 {
+    color: #e2e8f0;
+}
+[data-theme="dark"] .central-page .central-heading > p,
+[data-theme="dark"] .central-page .central-reference {
+    color: #94a3b8;
+}
+[data-theme="dark"] .central-page details {
+    background: #1b2432;
+    border-color: #334155;
+}
+[data-theme="dark"] .central-page details > summary {
+    color: #cbd5e1;
+}
+[data-theme="dark"] .central-page details > summary strong {
+    color: #d8e0ea;
+    font-weight: 600;
+}
+[data-theme="dark"] .central-page table thead {
+    background: #253244;
+}
+[data-theme="dark"] .central-page th {
+    color: #94a3b8;
+    border-bottom-color: #3b4a5f;
+}
+[data-theme="dark"] .central-page td {
+    color: #aebdce;
+    border-bottom-color: #2a3748;
+}
+[data-theme="dark"] .central-page td:first-child {
+    color: #cbd5e1;
+}
+[data-theme="dark"] .central-page tr:hover td {
+    background: #243244;
+}
+[data-theme="dark"] .central-page a:not(.btn) {
+    color: #8fb4df;
+}
+[data-theme="dark"] .central-page a:not(.btn):hover {
+    color: #a9c5e5;
+}
+[data-theme="dark"] .central-page .btn {
+    color: #cbd5e1;
+    background: #243244;
+    border-color: #3b4a5f;
+}
+[data-theme="dark"] .central-page .btn:hover {
+    color: #e2e8f0;
+    background: #2b3a4e;
+}
+[data-theme="dark"] .central-page [role="alert"] {
+    color: #f0a5a5;
+}
