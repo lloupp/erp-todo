@@ -62,6 +62,22 @@ register_frequencia(app, _legacy.get_db)
 from sge_vagas import register_vagas
 register_vagas(app, _legacy.get_db)
 
+from sge_student_modal import register_student_modal
+register_student_modal(
+    app,
+    _legacy.get_db,
+    _legacy.criar_acao_pipeline,
+    _legacy.PIPELINE_ETAPAS,
+)
+
+from sge_bulk_stages import register_bulk_stages
+register_bulk_stages(
+    app,
+    _legacy.get_db,
+    _legacy.criar_acao_pipeline,
+    _legacy.PIPELINE_ETAPAS,
+)
+
 register_sge_academico(app, _legacy.get_db)
 register_microsoft_integrations(app, _legacy.get_db, _legacy.criar_acao_pipeline)
 

@@ -42,6 +42,7 @@
             <div class="topbar-right">
                 <button class="btn btn-sm btn-secondary" onclick="abrirModalImport()">&#8679; Importar Excel</button>
                 <button class="btn btn-sm btn-secondary" onclick="exportarCSV()">&#8681; Exportar CSV</button>
+                <a class="btn btn-sm btn-secondary" href="/sge/ajuste-etapas">Ajuste em lote</a>
                 <button class="btn btn-sm btn-primary" onclick="abrirModalNovo()">+ Novo</button>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Alternar tema">&#9790;</button>
             </div>
@@ -272,6 +273,76 @@
             <div class="modal-footer">
                 <button class="btn" onclick="fecharModal('modal-residente')">Cancelar</button>
                 <button class="btn btn-primary" onclick="salvarResidente()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════ MODAL DETALHE DO ALUNO ═══════════════════ -->
+    <div class="modal-overlay" id="modal-aluno-detalhe">
+        <div class="modal" style="max-width:860px;width:96%;">
+            <div class="modal-header">
+                <div>
+                    <h3 id="aluno-detalhe-titulo">Detalhes do aluno</h3>
+                    <small id="aluno-detalhe-subtitulo" style="color:var(--color-text-secondary);"></small>
+                </div>
+                <button class="btn-icon" onclick="fecharModal('modal-aluno-detalhe')">&times;</button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+                <div id="aluno-detalhe-resumo"
+                     style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;"></div>
+
+                <section style="border:1px solid var(--color-border);border-radius:8px;padding:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                        <div>
+                            <strong>Pipeline</strong>
+                            <div id="aluno-etapa-atual" style="margin-top:4px;"></div>
+                        </div>
+                        <div id="aluno-etapa-meta" style="font-size:12px;color:var(--color-text-secondary);text-align:right;"></div>
+                    </div>
+
+                    <div id="aluno-etapa-edicao" style="margin-top:14px;">
+                        <div style="display:grid;grid-template-columns:minmax(180px,1fr) minmax(240px,2fr);gap:10px;">
+                            <label>Atualizar etapa
+                                <select id="aluno-etapa-select" style="width:100%;height:36px;margin-top:4px;"></select>
+                            </label>
+                            <label>Justificativa da alteração
+                                <input id="aluno-etapa-justificativa" type="text"
+                                       placeholder="Ex.: cadastro antigo já estava aguardando o chefe"
+                                       style="width:100%;height:36px;margin-top:4px;">
+                            </label>
+                        </div>
+                        <div id="aluno-capacidade-override" style="display:none;margin-top:10px;padding:10px;border:1px dashed var(--color-border);border-radius:6px;">
+                            <label style="display:flex;gap:6px;align-items:center;">
+                                <input type="checkbox" id="aluno-override-capacidade"> Override de capacidade (administrador)
+                            </label>
+                            <input id="aluno-motivo-capacidade" type="text"
+                                   placeholder="Justificativa do override de capacidade"
+                                   style="width:100%;height:34px;margin-top:6px;">
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                            <button class="btn btn-primary" id="btn-atualizar-etapa-aluno" onclick="atualizarEtapaAluno()">Atualizar etapa</button>
+                        </div>
+                        <p id="aluno-etapa-aviso" style="font-size:12px;color:var(--color-text-secondary);margin:8px 0 0;">
+                            A troca de etapa encerra a ação pendente anterior como correção auditada e cria uma nova ação.
+                        </p>
+                    </div>
+                </section>
+
+                <section>
+                    <strong>Últimas ações do pipeline</strong>
+                    <div style="overflow:auto;margin-top:8px;">
+                        <table class="recent-table" style="width:100%;">
+                            <thead><tr><th>Etapa</th><th>Situação</th><th>Observação</th><th>Responsável</th><th>Data</th></tr></thead>
+                            <tbody id="aluno-pipeline-historico"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-secondary" id="aluno-link-operacional" href="#">Abrir acompanhamento completo</a>
+                <button class="btn btn-ghost" onclick="editarAlunoDoDetalhe()">Editar cadastro</button>
+                <button class="btn btn-ghost" onclick="historicoAlunoDoDetalhe()">Histórico completo</button>
+                <button class="btn" onclick="fecharModal('modal-aluno-detalhe')">Fechar</button>
             </div>
         </div>
     </div>

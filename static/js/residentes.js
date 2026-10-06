@@ -13,6 +13,7 @@ let AREA_MEDICA = null;     // cache dos contatos de chefes de servico
 let MENSAGENS_MODELO = {};  // chave -> texto do modelo (editavel em /configuracoes)
 let USUARIO_LOGADO_NOME = '';
 let USUARIO_LOGADO_ROLE = 'somente_leitura';
+let alunoDetalheId = null;
 
 const STATUS_FLOW = [
     'Interessado', 'Em andamento', 'Deferido', 'Confirmado'
@@ -848,6 +849,139 @@ function aplicarFiltro() {
     loadResidentes();
 }
 
+// ─── Modal central do aluno ───────────────────────────────────
+async function abrirModalAluno(id) {
+    alunoDetalheId = id;
+    const titulo = document.getElementById('aluno-detalhe-titulo');
+    const subtitulo = document.getElementById('aluno-detalhe-subtitulo');
+    const resumo = document.getElementById('aluno-detalhe-resumo');
+    const historico = document.getElementById('aluno-pipeline-historico');
+    titulo.textContent = 'Detalhes do aluno';
+    subtitulo.textContent = 'Carregando...';
+    resumo.innerHTML = '';
+    historico.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:12px;">Carregando...</td></tr>';
+    abrirModal('modal-aluno-detalhe');
+
+    try {
+        const data = await apiFetch(`/api/residentes/${id}/resumo`);
+        titulo.textContent = data.nome || 'Detalhes do aluno';
+        subtitulo.textContent = [
+            data.tipo,
+            data.modalidade,
+            data.especialidade,
+        ].filter(Boolean).join(' · ');
+
+        const card = (label, value) => `
+            <div style="border:1px solid var(--color-border);border-radius:7px;padding:10px;">
+                <div style="font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;">${esc(label)}</div>
+                <div style="font-weight:600;margin-top:2px;">${esc(value || '—')}</div>
+            </div>`;
+
+        resumo.innerHTML = [
+            card('Status', data.status),
+            card('Período', data.inicio || data.termino ? `${formatarDataBR(data.inicio) || '—'} a ${formatarDataBR(data.termino) || '—'}` : data.mes_ano),
+            card('Instituição', data.instituicao_origem),
+            card('Pagamento', data.status_pagamento),
+            card('E-mail', data.email),
+            card('Telefone', data.telefone),
+        ].join('');
+
+        const pipeline = data.pipeline;
+        const etapaAtual = document.getElementById('aluno-etapa-atual');
+        const etapaMeta = document.getElementById('aluno-etapa-meta');
+        if (pipeline) {
+            const info = PIPELINE_ETAPAS_INFO[pipeline.etapa] || {};
+            etapaAtual.innerHTML = `<strong>Etapa ${pipeline.etapa} — ${esc(info.titulo || pipeline.etapa_nome || pipeline.acao_tipo)}</strong>`;
+            etapaMeta.textContent = [
+                pipeline.prazo_em ? 'Prazo: ' + formatarDataBR(pipeline.prazo_em) : null,
+                pipeline.atribuido_a ? 'Responsável: ' + pipeline.atribuido_a : 'Sem responsável',
+                pipeline.bloqueado ? 'Bloqueada' : null,
+            ].filter(Boolean).join(' · ');
+        } else {
+            etapaAtual.innerHTML = '<strong>Sem etapa pendente</strong>';
+            etapaMeta.textContent = data.status === 'Concluído' ? 'Processo concluído' : '';
+        }
+
+        const select = document.getElementById('aluno-etapa-select');
+        select.innerHTML = (data.etapas || []).map(e =>
+            `<option value="${e.id}" ${pipeline && pipeline.etapa === e.id ? 'selected' : ''}>Etapa ${e.id} — ${esc((PIPELINE_ETAPAS_INFO[e.id] || {}).titulo || e.nome)}</option>`
+        ).join('');
+        document.getElementById('aluno-etapa-justificativa').value = '';
+        document.getElementById('aluno-override-capacidade').checked = false;
+        document.getElementById('aluno-motivo-capacidade').value = '';
+
+        const pode = Boolean(data.pode_ajustar_etapa);
+        select.disabled = !pode;
+        document.getElementById('aluno-etapa-justificativa').disabled = !pode;
+        document.getElementById('btn-atualizar-etapa-aluno').disabled = !pode;
+        document.getElementById('aluno-etapa-aviso').textContent = pode
+            ? 'A troca de etapa encerra a ação pendente anterior como correção auditada e cria uma nova ação.'
+            : 'Processo encerrado ou perfil sem permissão para corrigir a etapa.';
+
+        const mostrarOverride = USUARIO_LOGADO_ROLE === 'admin' && [8,9].includes(Number(select.value));
+        document.getElementById('aluno-capacidade-override').style.display = mostrarOverride ? 'block' : 'none';
+        select.onchange = () => {
+            const show = USUARIO_LOGADO_ROLE === 'admin' && [8,9].includes(Number(select.value));
+            document.getElementById('aluno-capacidade-override').style.display = show ? 'block' : 'none';
+        };
+
+        historico.innerHTML = (data.pipeline_historico || []).length
+            ? data.pipeline_historico.map(item => `<tr>
+                <td>${item.etapa || '—'}</td>
+                <td>${esc(item.situacao || '—')}</td>
+                <td>${esc(item.observacao || '—')}</td>
+                <td>${esc(item.responsavel || '—')}</td>
+                <td>${esc(item.ts ? new Date(item.ts).toLocaleString('pt-BR') : '—')}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--color-text-secondary);">Sem histórico de pipeline.</td></tr>';
+
+        document.getElementById('aluno-link-operacional').href = `/sge/residentes/${id}`;
+    } catch (_) {
+        fecharModal('modal-aluno-detalhe');
+    }
+}
+
+async function atualizarEtapaAluno() {
+    if (!alunoDetalheId) return;
+    const etapa = Number(document.getElementById('aluno-etapa-select').value);
+    const justificativa = document.getElementById('aluno-etapa-justificativa').value.trim();
+    if (justificativa.length < 5) {
+        showToast('Informe uma justificativa para alterar a etapa.', 'error');
+        return;
+    }
+    const body = {
+        etapa,
+        justificativa,
+        override_capacidade: document.getElementById('aluno-override-capacidade').checked,
+        motivo_capacidade: document.getElementById('aluno-motivo-capacidade').value.trim() || null,
+    };
+    try {
+        await apiFetch(`/api/pipeline/residente/${alunoDetalheId}/etapa`, {
+            method: 'PUT',
+            body: JSON.stringify(body),
+        });
+        showToast(`Etapa atualizada para ${etapa}.`, 'success');
+        await abrirModalAluno(alunoDetalheId);
+        loadResidentes();
+        loadWelcomeBanner();
+    } catch (_) {}
+}
+
+function editarAlunoDoDetalhe() {
+    if (!alunoDetalheId) return;
+    const id = alunoDetalheId;
+    fecharModal('modal-aluno-detalhe');
+    abrirModalEditar(id);
+}
+
+function historicoAlunoDoDetalhe() {
+    if (!alunoDetalheId) return;
+    const id = alunoDetalheId;
+    const nome = residentesCache[id]?.nome || 'Aluno';
+    fecharModal('modal-aluno-detalhe');
+    abrirHistorico(id, nome);
+}
+
 // ─── Carregar lista ───────────────────────────────────────────
 async function loadResidentes() {
     const filtros = getFiltros();
@@ -889,7 +1023,7 @@ function renderTabela(rows) {
             : '';
 
         return `<tr>
-            <td><strong>${esc(r.nome)}</strong><br><small style="color:var(--color-text-secondary)">${esc(r.email||'')} ${r.telefone?'· '+esc(r.telefone):''}</small></td>
+            <td><button type="button" onclick="abrirModalAluno(${r.id})" style="border:0;background:none;padding:0;color:inherit;text-align:left;cursor:pointer;font:inherit;"><strong style="text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;">${esc(r.nome)}</strong></button><br><small style="color:var(--color-text-secondary)">${esc(r.email||'')} ${r.telefone?'· '+esc(r.telefone):''}</small></td>
             <td><span class="badge-tipo ${tipoCls}">${esc(r.tipo)}</span><br><small>${esc(r.modalidade||'')}</small></td>
             <td>${esc(r.especialidade)}<br><small style="color:var(--color-text-secondary)">${esc(r.subespecialidade||'')}</small></td>
             <td>${esc(r.instituicao_origem||'—')}</td>
@@ -900,6 +1034,7 @@ function renderTabela(rows) {
             <td><span class="badge-status" style="background:${cor}">${esc(r.status)}</span>${alertaHtml}</td>
             <td>${pagBadge}${r.valor?`<br><small>R$ ${Number(r.valor).toFixed(2)}</small>`:''}</td>
             <td style="white-space:nowrap;">
+                <button class="btn btn-sm btn-ghost" onclick="abrirModalAluno(${r.id})" title="Abrir detalhes do aluno">&#128100;</button>
                 ${r.telefone ? `<a class="btn btn-sm btn-whatsapp" href="${whatsappLink(r.telefone, r.nome)}" target="_blank" rel="noopener" title="Contatar ${esc(r.nome)} via WhatsApp">&#128241;</a>` : ''}
                 <button class="btn btn-sm btn-area-medica" onclick="abrirModalAreaMedica(${r.id})" title="Falar com a Área Médica (chefe de serviço)">&#127973;</button>
                 <button class="btn btn-sm btn-ghost" onclick="abrirAcademico(${r.id},'${esc(r.nome).replace(/'/g,"\\'")}')" title="Acompanhamento acadêmico">&#127891;</button>
