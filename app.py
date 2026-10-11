@@ -93,6 +93,9 @@ install_production_guards(app)
 from import_feedback import install_import_feedback
 install_import_feedback(app)
 
+from flexible_import import register_flexible_import
+register_flexible_import(app, _legacy.get_db)
+
 
 @app.after_request
 def _block_external_login_redirects(response):
