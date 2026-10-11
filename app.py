@@ -90,6 +90,9 @@ if os.environ.get('ERP_DATABASE'):
 # entry point. The installer is idempotent, so wsgi.py may call it again safely.
 install_production_guards(app)
 
+from import_feedback import install_import_feedback
+install_import_feedback(app)
+
 
 @app.after_request
 def _block_external_login_redirects(response):
