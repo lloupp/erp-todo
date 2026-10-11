@@ -2,6 +2,7 @@ import pathlib
 import sys
 import types
 import unittest
+from unittest import mock
 
 
 class FakeResponse:
@@ -39,7 +40,7 @@ class ImportFeedbackTests(unittest.TestCase):
         fake_flask = types.ModuleType('flask')
         fake_flask.request = request
         fake_flask.jsonify = lambda data: FakeResponse(data)
-        with unittest.mock.patch.dict(sys.modules, {'flask': fake_flask}):
+        with mock.patch.dict(sys.modules, {'flask': fake_flask}):
             spec = importlib.util.spec_from_file_location(
                 'isolated_import_feedback',
                 pathlib.Path(__file__).resolve().parents[1] / 'import_feedback.py',
